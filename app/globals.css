@@ -1,26 +1,224 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Touch screens fake :hover on tap and leave it stuck; only a real pointer gets hover styles. */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
   }
 }
 
+/*
+  PANNIPIX tokens
+  paper    – the page: a cool, neutral off-white (stencil paper, not cream)
+  stencil  – panels the artwork sits on
+  ink      – tattoo ink; the only "colour" on the page
+  graphite – secondary text
+  muted    – labels and meta (AA on paper)
+  hairline – rules and borders, the weight of a single-needle line
+*/
+@theme {
+  --color-paper: #f7f7f5;
+  --color-stencil: #eeeeeb;
+  --color-ink: #121211;
+  --color-graphite: #4f4e4a;
+  --color-muted: #6e6d66;
+  --color-hairline: #dcdbd6;
+  --color-ash: #a3a29b;
+
+  --ease-draw: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-settle: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@theme inline {
+  --font-display: var(--font-bodoni), "Didot", "Bodoni 72", serif;
+  --font-sans: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Side gutter per breakpoint; the `gutter` utility also clears the notch in landscape. */
+:root {
+  --gutter: 1.25rem;
+}
+@media (width >= 40rem) {
+  :root {
+    --gutter: 2rem;
+  }
+}
+@media (width >= 64rem) {
+  :root {
+    --gutter: 3rem;
+  }
+}
+
+@utility gutter {
+  padding-left: max(var(--gutter), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--gutter), env(safe-area-inset-right, 0px));
+}
+
+html {
+  color-scheme: light;
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(4.5rem + env(safe-area-inset-top, 0px)); /* header height, so section rules meet the header rule */
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent; /* every control has its own :active state */
+  interpolate-size: allow-keywords;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+@layer base {
+  /* No double-tap-zoom wait before a tap registers. */
+  a,
+  button,
+  label,
+  summary,
+  select,
+  [role="tab"] {
+    touch-action: manipulation;
+  }
+
+  /* Long-pressing a control shouldn't select its label or pop the link callout. Content text stays selectable. */
+  button,
+  summary,
+  [role="tab"],
+  nav a {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* iOS zooms into any field under 16px and never zooms back out. */
+  input,
+  select,
+  textarea {
+    font-size: max(1rem, 16px);
+  }
+}
+
+::selection {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+:focus-visible {
+  outline: 1.5px solid currentColor;
+  outline-offset: 3px;
+}
+
+/* Small uppercase label, the voice of the reference's eyebrows and nav */
+@utility label {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.2;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* ---------- Accordions (details/summary) ---------- */
+details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size 420ms var(--ease-settle),
+    content-visibility 420ms allow-discrete;
+}
+details[open]::details-content {
+  block-size: auto;
+}
+details[open] .acc-icon {
+  transform: rotate(45deg);
+}
+
+/* ---------- Hero load sequence: the axis draws, then the piece appears ---------- */
+@keyframes axis-draw {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes line-rise {
+  from {
+    transform: translateY(104%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ink-in {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+  }
+}
+
+.axis-draw {
+  transform-origin: top;
+  animation: axis-draw 1.4s var(--ease-draw) both;
+}
+.line-rise {
+  display: block;
+  animation: line-rise 1.1s var(--ease-settle) both;
+}
+.fade-up {
+  animation: fade-up 0.9s var(--ease-settle) both;
+}
+.ink-in {
+  animation: ink-in 1.6s var(--ease-settle) both;
+}
+
+/* ---------- Footer wordmark: a pool of light and a stipple of grain ---------- */
+.mark-glow {
+  background: radial-gradient(
+    closest-side,
+    rgb(247 247 245 / 0.62),
+    rgb(247 247 245 / 0.26) 42%,
+    rgb(247 247 245 / 0.07) 72%,
+    transparent
+  );
+}
+.mark-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 3 0 0 0 -1.5'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.22;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
     // Fine-line artwork smears at the default quality of 75.
     qualities: [75, 90],
   },
+  experimental: {
+    // Hostinger's build box won't let Turbopack's spawned node workers connect back over
+    // 127.0.0.1, so PostCSS (Tailwind) dies on globals.css. Worker threads stay in-process.
+    turbopackPluginRuntimeStrategy: "workerThreads",
+  },
 };
 
 export default nextConfig;

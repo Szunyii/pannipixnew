@@ -5700,7 +5700,7 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 ## Hogyan működik a foglalás
 
 - **Kollekció:** a szabálya dönti el, hányszor foglalható egy-egy mintája: *Egyszeri* (1), *Limitált* (x) vagy *Korlátlan*.
-- **Időpontok:** egy közös naptár. Bármelyik minta bármelyik szabad időpontra foglalható, és egy időpontra egy foglalás jut.
+- **Időpontok:** egy közös naptár. Bármelyik minta bármelyik szabad időpontra foglalható, és egy időpontra egy foglalás jut. A *Lejárt* állapotú, szabad időpontokat érdemes időnként törölni, mert az admin időpont-választójában a jövőbeliek elé kerülnek.
 - **Foglalás:** beküldéskor azonnal leköti az időpontot és a minta egy alkalmát, állapota *Függőben*. Az admin jóváhagyja vagy elutasítja. *Elutasítva* és *Lemondva* állapotban az időpont és az alkalom újra szabad.
 - **Dupla foglalás:** két egyedi index (`slot`, illetve `design + seat`) zárja ki, akkor is, ha ketten egyszerre kattintanak.
 - **E-mailek:** az admin minden webes foglalásról levelet kap. Az ügyfél a beérkezésről, a jóváhagyásról, az elutasításról és a lemondásról kap levelet.

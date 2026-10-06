@@ -32,7 +32,7 @@
 | `cms/booking/errors.ts` | `BookingError` kódokkal, hibák osztályozása |
 | `cms/booking/hooks.ts` | `prepareBooking`: foglalási szabályok minden mentéskor |
 | `cms/booking/guards.ts` | Törlésvédelem (kollekció, minta, időpont) |
-| `cms/booking/public.ts` | Webes foglalás létrehozása egyszeri újrapróbálással |
+| `cms/booking/public.ts` | Webes foglalás létrehozása, újrapróbálással ütközés esetén |
 | `cms/emails/templates.ts` | E-mail szövegek, és melyik esemény milyen levelet küld |
 | `cms/emails/send.ts` | `afterChange` hook: levelek küldése, hibatűréssel |
 | `lib/booking-rules.ts` | Tiszta függvények: állapotok, limit, foglalhatóság, sorszám |
@@ -1556,7 +1556,7 @@ export const Slots: CollectionConfig = {
 ```ts
 import type { CollectionConfig, Where } from "payload";
 import { PLACEMENTS } from "@/lib/booking-input";
-import { relationId } from "@/lib/booking-rules";
+import { STATUS_LABELS, relationId } from "@/lib/booking-rules";
 import { isAdmin } from "../access";
 
 export const Bookings: CollectionConfig = {
@@ -1613,13 +1613,7 @@ export const Bookings: CollectionConfig = {
       required: true,
       defaultValue: "pending",
       label: "Állapot",
-      options: [
-        { label: "Függőben", value: "pending" },
-        { label: "Jóváhagyva", value: "confirmed" },
-        { label: "Elkészült", value: "completed" },
-        { label: "Elutasítva", value: "rejected" },
-        { label: "Lemondva", value: "cancelled" },
-      ],
+      options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ label, value })),
       admin: { position: "sidebar" },
     },
     {
@@ -2078,6 +2072,28 @@ describe("booking rules", () => {
     expect(moved.seat).toBe(1);
   });
 
+  it("keeps a design sold out when its collection's limit is lowered under the active bookings", async () => {
+    const category = await createCategory(payload, "limited", 3);
+    const design = await createDesign(payload, category.id);
+    for (let i = 0; i < 2; i += 1) await createBooking(payload, design.id, (await createSlot(payload)).id);
+    await payload.update({ collection: "categories", id: category.id, data: { limit: 2 } });
+    await expect(createBooking(payload, design.id, (await createSlot(payload)).id)).rejects.toMatchObject({
+      code: "sold_out",
+    });
+  });
+
+  it("counts the bookings made while the collection was unlimited", async () => {
+    const category = await createCategory(payload, "unlimited");
+    const design = await createDesign(payload, category.id);
+    for (let i = 0; i < 2; i += 1) await createBooking(payload, design.id, (await createSlot(payload)).id);
+    await payload.update({ collection: "categories", id: category.id, data: { rule: "limited", limit: 3 } });
+
+    expect((await createBooking(payload, design.id, (await createSlot(payload)).id)).seat).toBe(1);
+    await expect(createBooking(payload, design.id, (await createSlot(payload)).id)).rejects.toMatchObject({
+      code: "sold_out",
+    });
+  });
+
   it("records the design, price and time at booking and names the booking", async () => {
     const category = await createCategory(payload, "single");
     const design = await createDesign(payload, category.id, { price: 110000 });
@@ -2118,7 +2134,7 @@ import {
   effectiveLimit,
   isActiveStatus,
   isReleasedStatus,
-  lowestFreeSeat,
+  nextSeat,
   relationId,
 } from "@/lib/booking-rules";
 import type { Booking } from "@/payload-types";
@@ -2189,7 +2205,7 @@ async function takeSeat(designId: number, { data, isPublic, excludeId, req }: Sc
     data.seat = null;
   } else {
     // One read gives both the count and the free seat, so two requests that see the same state
-    // pick the same seat and the unique index turns one of them away.
+    // pick the same seat and the unique index turns one of them away (see nextSeat).
     const conditions: Where[] = [{ design: { equals: designId } }, { status: { in: [...ACTIVE_STATUSES] } }];
     if (excludeId) conditions.push({ id: { not_equals: excludeId } });
     const active = await req.payload.find({
@@ -2201,7 +2217,7 @@ async function takeSeat(designId: number, { data, isPublic, excludeId, req }: Sc
       overrideAccess: true,
       req,
     });
-    const seat = active.docs.length < limit ? lowestFreeSeat(active.docs.map((b) => b.seat), limit) : null;
+    const seat = nextSeat(active.docs.map((b) => b.seat), limit);
     if (seat === null) throw new BookingError("sold_out");
     data.seat = seat;
   }
@@ -2255,7 +2271,7 @@ Az `indexes` sor után:
 npx vitest run tests/int/bookings.test.ts
 ```
 
-Expected: PASS (10 teszt).
+Expected: PASS (12 teszt).
 
 - [ ] **Step 7: Lint, typecheck, teljes tesztkészlet**
 
@@ -2390,6 +2406,20 @@ describe("website bookings", () => {
     expect((await payload.count({ collection: "bookings" })).totalDocs).toBe(1);
   });
 
+  it("let two simultaneous requests share a design with two bookings left", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "limited", 2)).id);
+    const [s1, s2] = [await createSlot(payload), await createSlot(payload)];
+
+    const results = await Promise.all([
+      createPublicBooking(payload, publicInput(design.id, s1.id)),
+      createPublicBooking(payload, publicInput(design.id, s2.id)),
+    ]);
+
+    expect(results.every((r) => r.ok)).toBe(true);
+    const booked = await payload.find({ collection: "bookings", where: { design: { equals: design.id } } });
+    expect(booked.docs.map((b) => b.seat).sort()).toEqual([1, 2]);
+  });
+
   it("let exactly one of two simultaneous requests take a slot", async () => {
     const category = await createCategory(payload, "unlimited");
     const [a, b] = [await createDesign(payload, category.id), await createDesign(payload, category.id)];
@@ -2424,13 +2454,15 @@ import { type PublicBookingCode, classifyBookingError } from "./errors";
 export type PublicBookingResult = { ok: true; bookingId: number } | { ok: false; code: PublicBookingCode };
 
 const PUBLIC_CODES: readonly string[] = ["design_unavailable", "sold_out", "slot_taken", "slot_past"];
+const MAX_ATTEMPTS = 3;
 
 /**
- * Creates a booking from the website form. When two people grab the same seat of a design at the
- * same moment, the loser retries once: it then either gets the next seat or learns it sold out.
+ * Creates a booking from the website form. Simultaneous requests for one design all pick its lowest
+ * free seat and the unique index lets one through; the others retry, and then take the next seat or
+ * learn the design sold out.
  */
 export async function createPublicBooking(payload: Payload, input: BookingInput): Promise<PublicBookingResult> {
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
       const booking = await payload.create({
         collection: "bookings",
@@ -2451,7 +2483,7 @@ export async function createPublicBooking(payload: Payload, input: BookingInput)
       return { ok: true, bookingId: booking.id };
     } catch (err) {
       const code = classifyBookingError(err);
-      if (code === "seat_conflict" && attempt === 1) continue;
+      if (code === "seat_conflict" && attempt < MAX_ATTEMPTS) continue;
       if (PUBLIC_CODES.includes(code)) return { ok: false, code: code as PublicBookingCode };
       payload.logger.error({ err, msg: "Website booking failed" });
       return { ok: false, code: "unknown" };
@@ -2467,7 +2499,7 @@ export async function createPublicBooking(payload: Payload, input: BookingInput)
 npx vitest run tests/unit/booking-errors.test.ts tests/int/public-booking.test.ts
 ```
 
-Expected: PASS (9 teszt). Ha a két egyidejűségi teszt valamelyike `unknown` kódot ad, nézd meg a naplóban az `err` tartalmát. Ha a `data.errors[0].path` más (pl. `bookings_design_seat_idx`), vedd fel a `classifyBookingError` megfelelő ágába, és bővítsd vele a `booking-errors` egységtesztet.
+Expected: PASS (10 teszt). Ha a két egyidejűségi teszt valamelyike `unknown` kódot ad, nézd meg a naplóban az `err` tartalmát. Ha a `data.errors[0].path` más (pl. `bookings_design_seat_idx`), vedd fel a `classifyBookingError` megfelelő ágába, és bővítsd vele a `booking-errors` egységtesztet.
 
 - [ ] **Step 5: Commit**
 

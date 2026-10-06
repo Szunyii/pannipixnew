@@ -150,7 +150,7 @@ Nyilvános és admin által felvett foglalásnál ugyanez fut; az eltérések je
 
 - Két egyedi index védi a foglalásokat: `bookings.slot` és (`bookings.design`, `bookings.seat`). Az SQLite több `NULL` értéket is enged egy egyedi oszlopban, így a felszabadított és a korlátlan foglalások nem ütköznek.
 - **Két kérés egyszerre ugyanarra az időpontra:** az egyik beszúrás `SQLITE_CONSTRAINT_UNIQUE` hibát kap. A Payload ezt `ValidationError`-rá alakítja, a hibás mező útvonalával. Az ügyfél ezt látja: „Ezt az időpontot közben lefoglalták, válassz másikat.”
-- **Két kérés egyszerre ugyanarra a sorszámra:** az egyik elbukik, és a server action **egyszer** újrapróbálja. Ekkor már friss állapotot lát, tehát vagy új sorszámot kap, vagy „betelt” üzenetet.
+- **Két kérés egyszerre ugyanarra a sorszámra:** az egyik elbukik, és a server action **legfeljebb kétszer** újrapróbálja. Ekkor már friss állapotot lát, tehát vagy új sorszámot kap, vagy „betelt” üzenetet.
 - Az `activeCount` és a szabad sorszám ugyanabból az olvasásból jön, ezért a limit nem léphető túl. Aki régebbi állapotot lát, ugyanazt a sorszámot választja, mint a másik kérés, és az indexen elbukik.
 
 ### 6.5 Admin módosítások (Bookings `beforeChange`, frissítés)

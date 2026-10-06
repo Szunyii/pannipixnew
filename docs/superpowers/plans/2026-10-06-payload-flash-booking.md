@@ -974,6 +974,13 @@ describe("zonedTimeToUtc", () => {
     expect(zonedTimeToUtc("2026-10-14", "10:00")).toBe(OCT_14_10_00);
     expect(zonedTimeToUtc("2026-11-03", "14:30")).toBe(NOV_03_14_30);
   });
+
+  it("reads times on the summer-time change days correctly", () => {
+    expect(zonedTimeToUtc("2026-03-29", "01:30")).toBe("2026-03-29T00:30:00.000Z"); // still winter time
+    expect(zonedTimeToUtc("2026-03-29", "03:30")).toBe("2026-03-29T01:30:00.000Z"); // summer time
+    expect(zonedTimeToUtc("2026-10-25", "01:30")).toBe("2026-10-24T23:30:00.000Z"); // still summer time
+    expect(zonedTimeToUtc("2026-10-25", "03:30")).toBe("2026-10-25T02:30:00.000Z"); // winter time
+  });
 });
 
 describe("groupSlotsByDay", () => {
@@ -1045,13 +1052,30 @@ export function formatSlotTitle(value: DateInput) {
   return `${numericDateFormat.format(date)} (${weekdayFormat.format(date)}) ${timeFormat.format(date)}`;
 }
 
+const offsetFormat = new Intl.DateTimeFormat("en-US", {
+  timeZone: TIME_ZONE,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  second: "numeric",
+});
+
+/** How far Budapest is ahead of UTC at an instant, in ms (1 or 2 hours). Built from formatted parts, so the machine's time zone never enters. */
+function offsetAt(ms: number) {
+  const p = Object.fromEntries(offsetFormat.formatToParts(ms).map((part) => [part.type, part.value]));
+  // The parts have whole-second resolution.
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(ms / 1000) * 1000;
+}
+
 /** Reads a wall-clock time ("2026-10-14", "10:00") as Budapest time and returns it as a UTC ISO string. */
 export function zonedTimeToUtc(day: string, time: string): string {
-  const asUtc = new Date(`${day}T${time}:00.000Z`);
-  // How far Budapest is ahead of UTC at that moment: 1 or 2 hours, depending on summer time.
-  const local = new Date(asUtc.toLocaleString("en-US", { timeZone: TIME_ZONE }));
-  const utc = new Date(asUtc.toLocaleString("en-US", { timeZone: "UTC" }));
-  return new Date(asUtc.getTime() - (local.getTime() - utc.getTime())).toISOString();
+  const asUtc = Date.parse(`${day}T${time}:00.000Z`);
+  // The first guess can lie across a summer-time change from asUtc, so read the offset again at the guess.
+  const guess = asUtc - offsetAt(asUtc);
+  return new Date(asUtc - offsetAt(guess)).toISOString();
 }
 
 export type OpenSlot = { id: number; startsAt: string; time: string; label: string };
@@ -1085,7 +1109,7 @@ export function groupSlotsByDay(slots: { id: number; startsAt: string }[]): Slot
 npx vitest run tests/unit/time.test.ts
 ```
 
-Expected: PASS (4 teszt). Ha egy formázott szöveg csak írásjelben tér el (más ICU verzió), a Node 22 tényleges kimenete a mérvadó: `node -e "console.log(new Intl.DateTimeFormat('hu-HU',{timeZone:'Europe/Budapest',month:'short',day:'numeric',weekday:'long'}).format(new Date('2026-10-14T08:00:00Z')))"`.
+Expected: PASS (5 teszt). Ha egy formázott szöveg csak írásjelben tér el (más ICU verzió), a Node 22 tényleges kimenete a mérvadó: `node -e "console.log(new Intl.DateTimeFormat('hu-HU',{timeZone:'Europe/Budapest',month:'short',day:'numeric',weekday:'long'}).format(new Date('2026-10-14T08:00:00Z')))"`.
 
 - [ ] **Step 5: Commit**
 

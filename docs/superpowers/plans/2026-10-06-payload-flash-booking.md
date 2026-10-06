@@ -64,7 +64,7 @@
 ```bash
 npm install --save-exact payload@3.90.2 @payloadcms/next@3.90.2 @payloadcms/db-sqlite@3.90.2 @payloadcms/email-nodemailer@3.90.2 @payloadcms/translations@3.90.2
 npm install graphql@^16.8.1 sharp@^0.35.5
-npm install --save-dev @types/node@^22 vite@^8 vitest@^5.0.3 vite-tsconfig-paths@^6.1.1
+npm install --save-dev @types/node@^22 vite@^8 vitest@^5.0.3
 ```
 
 A `@types/node@^22` azért kell, mert a vitest 5 opcionális peer függősége `@types/node ^22 || >=24`. A `--legacy-peer-deps` kapcsolót ne használd: kihagyná a `vite`-ot a lockfile-ból, és utána egy sima `npm ci` elbukna.
@@ -525,6 +525,7 @@ EOF
 > - A nodemailer timeoutokat kap, és a build alatt nem ellenőrzi az SMTP-t.
 > - `poweredByHeader: false`, és a Payload kliens-hint fejlécei csak a `/admin/*` alatt mennek ki.
 > - Új fájl lett az `app/fonts.ts` és az `app/global-not-found.tsx` (`experimental.globalNotFound`).
+> - A Task 3 átnézése után (`4e3f736`): `typescript.autoGenerate: !process.env.VITEST` és `telemetry: false`.
 >
 > A későbbi taskok ezekre a fájlokra csak hozzáfűzéssel hivatkoznak, így az utasításaik változatlanul érvényesek.
 
@@ -536,21 +537,25 @@ EOF
 - Create: `vitest.config.ts`
 - Create: `tests/setup.ts`
 - Create: `tests/helpers.ts`
+- Create: `tests/fixtures/sample.webp` (480×640-es fehér WebP, sharp-pal generálva; a tesztek így nem függnek a helyőrző grafikáktól)
 - Test: `tests/int/payload.test.ts`
 
 - [ ] **Step 1: `vitest.config.ts`**
 
 ```ts
-import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  resolve: { tsconfigPaths: true },
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
     setupFiles: ["./tests/setup.ts"],
-    // Booting Payload and pushing the schema to a fresh SQLite file takes a few seconds per test file.
+    // Payload keeps its instance on globalThis and reads env when the config is imported, so a test file
+    // only gets its own database in its own process. Vitest suggests `isolate: false` for import-heavy suites: don't.
+    pool: "forks",
+    isolate: true,
+    // Booting Payload and pushing the schema takes about a second per file; the rest is headroom for slow CI.
     hookTimeout: 60_000,
     testTimeout: 30_000,
   },
@@ -560,9 +565,10 @@ export default defineConfig({
 - [ ] **Step 2: `tests/setup.ts`**
 
 ```ts
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { afterAll, vi } from "vitest";
 
 // Every test file runs in its own process with its own throwaway database and upload folder.
 const dir = mkdtempSync(path.join(tmpdir(), "pannipix-test-"));
@@ -572,6 +578,14 @@ process.env.PAYLOAD_SECRET = "test-secret";
 process.env.ADMIN_EMAIL = "admin@example.com";
 process.env.SITE_URL = "https://pannipix.test";
 delete process.env.SMTP_HOST;
+// A NODE_ENV=production in the developer's shell would skip Payload's schema push.
+vi.stubEnv("NODE_ENV", "test");
+// The app formats times in Europe/Budapest explicitly; UTC here catches any accidental use of the machine's zone.
+process.env.TZ = "UTC";
+
+afterAll(() => {
+  rmSync(dir, { recursive: true, force: true });
+});
 ```
 
 - [ ] **Step 3: `tests/helpers.ts` (első változat)**
@@ -588,7 +602,7 @@ export function getTestPayload(): Promise<Payload> {
 - [ ] **Step 4: Füstteszt: `tests/int/payload.test.ts`**
 
 ```ts
-import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { getTestPayload } from "../helpers";
 
@@ -598,9 +612,9 @@ describe("payload", () => {
     const media = await payload.create({
       collection: "media",
       data: { alt: "Teszt kép" },
-      filePath: path.resolve("public/flash/pcons-027-large.webp"),
+      filePath: fileURLToPath(new URL("../fixtures/sample.webp", import.meta.url)),
     });
-    expect(media.url).toMatch(/^\/api\/media\/file\/pcons-027-large.*\.webp$/);
+    expect(media.url).toMatch(/^\/api\/media\/file\/sample.*\.webp$/);
     expect(media.sizes?.thumbnail?.width).toBe(320);
   });
 });
@@ -959,7 +973,7 @@ export function groupSlotsByDay(slots: { id: number; startsAt: string }[]): Slot
 npx vitest run tests/unit/time.test.ts
 ```
 
-Expected: PASS (5 teszt). Ha egy formázott szöveg csak írásjelben tér el (más ICU verzió), a Node 22 tényleges kimenete a mérvadó: `node -e "console.log(new Intl.DateTimeFormat('hu-HU',{timeZone:'Europe/Budapest',month:'short',day:'numeric',weekday:'long'}).format(new Date('2026-10-14T08:00:00Z')))"`.
+Expected: PASS (4 teszt). Ha egy formázott szöveg csak írásjelben tér el (más ICU verzió), a Node 22 tényleges kimenete a mérvadó: `node -e "console.log(new Intl.DateTimeFormat('hu-HU',{timeZone:'Europe/Budapest',month:'short',day:'numeric',weekday:'long'}).format(new Date('2026-10-14T08:00:00Z')))"`.
 
 - [ ] **Step 5: Commit**
 
@@ -1686,7 +1700,7 @@ Expected: mind a négy interfész megjelenik.
 - [ ] **Step 8: Tesztsegédek bővítése: a `tests/helpers.ts` teljes új tartalma**
 
 ```ts
-import path from "node:path";
+import { fileURLToPath } from "node:url";
 import config from "@payload-config";
 import { getPayload, type Payload } from "payload";
 import type { BookingInput } from "@/lib/booking-input";
@@ -1719,7 +1733,7 @@ async function testImage(payload: Payload) {
     await payload.create({
       collection: "media",
       data: { alt: "Tesztminta" },
-      filePath: path.resolve("public/flash/pcons-022.webp"),
+      filePath: fileURLToPath(new URL("./fixtures/sample.webp", import.meta.url)),
     })
   ).id;
   return imageId;

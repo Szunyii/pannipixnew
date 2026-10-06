@@ -292,7 +292,7 @@ SMTP_PASS=
 - Online fizetés, foglaló.
 - Ügyfélfiókok; mintánkénti külön aloldalak és URL-ek.
 - E-mail időpont-áthelyezésről; naptárszinkron (pl. Google Calendar).
-- Tömeges időpont-létrehozó eszköz. Az admin egyesével vagy duplikálással veszi fel az időpontokat.
+- Tömeges időpont-létrehozó eszköz. Az admin egyesével veszi fel az időpontokat. A duplikálás ki van kapcsolva, mert egy kezdési idő csak egyszer szerepelhet.
 - Több minta egy időpontban.
 
 ## 14. Pontosításra váró pontok

@@ -3417,11 +3417,14 @@ export async function bookFlash(formData: FormData): Promise<BookFlashState> {
   if (parsed.data.website) return { status: "success" };
 
   const address = await clientAddress();
-  if (!limiter.allowed(address)) return { status: "error", code: "rate_limited" };
+  if (!limiter.take(address)) return { status: "error", code: "rate_limited" };
 
   const result = await createPublicBooking(await getPayload({ config }), parsed.data);
-  if (!result.ok) return { status: "error", code: result.code };
-  limiter.record(address);
+  if (!result.ok) {
+    // Only bookings that went through count against the limit.
+    limiter.release(address);
+    return { status: "error", code: result.code };
+  }
   return { status: "success" };
 }
 

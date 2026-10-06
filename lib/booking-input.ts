@@ -30,6 +30,15 @@ export type FieldErrors = Partial<Record<BookingField, string>>;
 
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
+/** Pasted or autofilled numbers often carry no-break spaces and typographic dashes that look like the plain ones. */
+const phoneText = (value: unknown) =>
+  text(value)
+    .replace(/[^\S\r\n]+/g, " ")
+    .replace(/[\u2010-\u2015\u2212]/g, "-");
+
+/** Browsers post a textarea's line breaks as CRLF; count and keep them as one character, like the textarea's own maxLength. */
+const noteText = (value: unknown) => text(value).replace(/\r\n?/g, "\n");
+
 const positiveInt = (value: unknown) => {
   const raw = text(value);
   const n = /^\d+$/.test(raw) ? Number(raw) : NaN;
@@ -37,6 +46,16 @@ const positiveInt = (value: unknown) => {
 };
 
 const isPlacement = (value: string): value is Placement => PLACEMENTS.some((p) => p.value === value);
+
+/** Controls (CR, LF, tab, C1), line and paragraph separators and bidi overrides: a name is one plain line. */
+const NOT_IN_A_NAME = /[\p{Cc}\p{Zl}\p{Zp}\u202a-\u202e\u2066-\u2069]/u;
+
+/**
+ * The rule Payload applies to the booking's email field (payload 3.90.2, fields/validations). Anything laxer here
+ * passes the form and then fails inside payload.create, where the visitor only gets the generic error.
+ */
+const EMAIL =
+  /^(?!.*\.\.)[\w!#$%&'*+/=?^`{|}~-](?:[\w!#$%&'*+/=?^`{|}~.-]*[\w!#$%&'*+/=?^`{|}~-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i;
 
 /** Checks the booking form on the server; the browser's own validation is only a convenience. */
 export function parseBookingInput(
@@ -47,18 +66,18 @@ export function parseBookingInput(
   const slotId = positiveInt(raw.slotId);
   const name = text(raw.name);
   const email = text(raw.email);
-  const phone = text(raw.phone);
+  const phone = phoneText(raw.phone);
   const placement = text(raw.placement);
-  const note = text(raw.note);
+  const note = noteText(raw.note);
 
   if (designId === null) errors.designId = "Hiányzik a minta.";
   if (slotId === null) errors.slotId = "Válassz időpontot.";
-  if (name.length < 2 || name.length > 100 || /[\u0000-\u001f\u007f]/.test(name)) errors.name = "Add meg a neved.";
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (name.length < 2 || name.length > 100 || NOT_IN_A_NAME.test(name)) errors.name = "Add meg a neved.";
+  if (email.length > 254 || !EMAIL.test(email)) {
     errors.email = "Adj meg egy érvényes e-mail-címet.";
   }
-  if (!/^[0-9+()\- ]{6,20}$/.test(phone) || phone.replace(/\D/g, "").length < 6) {
-    errors.phone = "Adj meg egy érvényes telefonszámot.";
+  if (!/^[0-9+()\-/. ]{6,20}$/.test(phone) || phone.replace(/\D/g, "").length < 6) {
+    errors.phone = "Adj meg egy érvényes telefonszámot (pl. +36 30 123 4567).";
   }
   if (!isPlacement(placement)) errors.placement = "Válaszd ki a testtájat.";
   if (note.length > 1000) errors.note = "A megjegyzés legfeljebb 1000 karakter lehet.";

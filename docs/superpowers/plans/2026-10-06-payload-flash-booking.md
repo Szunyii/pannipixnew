@@ -1239,6 +1239,36 @@ describe("parseBookingInput", () => {
     const result = parseBookingInput({ ...valid, website: "spam.example" });
     expect(result.ok && result.data.website).toBe("spam.example");
   });
+
+  it.each(["1e3", "0x10", "12.0", "99999999999999999999"])("rejects %j as a design or slot id", (id) => {
+    const result = parseBookingInput({ ...valid, designId: id, slotId: id });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.fieldErrors).toEqual({ designId: "Hiányzik a minta.", slotId: "Válassz időpontot." });
+  });
+
+  it("rejects a line break in the phone number", () => {
+    const result = parseBookingInput({ ...valid, phone: "123\n456789" });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.fieldErrors).toEqual({ phone: "Adj meg egy érvényes telefonszámot." });
+  });
+
+  it.each([
+    ["line break", "Anna\nBcc: x"],
+    ["tab", "Anna\tKiss"],
+    ["delete character", "Anna\u007fKiss"],
+  ])("rejects a %s in the name", (_kind, name) => {
+    const result = parseBookingInput({ ...valid, name });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.fieldErrors).toEqual({ name: "Add meg a neved." });
+  });
+
+  it("keeps line breaks in the note, which comes from a textarea", () => {
+    const result = parseBookingInput({ ...valid, note: "Bal alkar\nkülső oldal" });
+    expect(result.ok && result.data.note).toBe("Bal alkar\nkülső oldal");
+  });
 });
 
 describe("placementLabel", () => {
@@ -1256,18 +1286,46 @@ import { describe, expect, it } from "vitest";
 import { createRateLimiter } from "@/lib/rate-limit";
 
 describe("createRateLimiter", () => {
-  it("allows the limit inside the window, then again once it has passed", () => {
+  it("takes up to the limit per key, lets a release make room, and frees everything once the window has passed", () => {
     let now = 0;
     const limiter = createRateLimiter({ limit: 2, windowMs: 1000, now: () => now });
 
-    expect(limiter.allowed("a")).toBe(true);
-    limiter.record("a");
-    limiter.record("a");
-    expect(limiter.allowed("a")).toBe(false);
-    expect(limiter.allowed("b")).toBe(true);
+    expect(limiter.take("a")).toBe(true);
+    expect(limiter.take("a")).toBe(true);
+    expect(limiter.take("a")).toBe(false);
+    expect(limiter.take("b")).toBe(true);
+
+    limiter.release("a");
+    expect(limiter.take("a")).toBe(true);
+    expect(limiter.take("a")).toBe(false);
 
     now = 1001;
-    expect(limiter.allowed("a")).toBe(true);
+    expect(limiter.take("a")).toBe(true);
+  });
+
+  it("gives back the latest event, so the older ones keep counting", () => {
+    let now = 0;
+    const limiter = createRateLimiter({ limit: 2, windowMs: 1000, now: () => now });
+
+    limiter.take("a"); // at 0
+    now = 600;
+    limiter.take("a"); // at 600
+    limiter.release("a"); // drops the one at 600
+
+    // The one at 0 has left the window by now. Had it been the one given back, the one at 600 would still count
+    // and only a single take would fit.
+    now = 1001;
+    expect(limiter.take("a")).toBe(true);
+    expect(limiter.take("a")).toBe(true);
+    expect(limiter.take("a")).toBe(false);
+  });
+
+  it("does nothing when a key with no events is released", () => {
+    const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: () => 0 });
+
+    expect(() => limiter.release("nobody")).not.toThrow();
+    expect(limiter.take("nobody")).toBe(true);
+    expect(limiter.take("nobody")).toBe(false);
   });
 });
 ```
@@ -1316,8 +1374,9 @@ export type FieldErrors = Partial<Record<BookingField, string>>;
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
 const positiveInt = (value: unknown) => {
-  const n = Number(text(value));
-  return Number.isInteger(n) && n > 0 ? n : null;
+  const raw = text(value);
+  const n = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
 };
 
 const isPlacement = (value: string): value is Placement => PLACEMENTS.some((p) => p.value === value);
@@ -1337,11 +1396,11 @@ export function parseBookingInput(
 
   if (designId === null) errors.designId = "Hiányzik a minta.";
   if (slotId === null) errors.slotId = "Válassz időpontot.";
-  if (name.length < 2 || name.length > 100) errors.name = "Add meg a neved.";
+  if (name.length < 2 || name.length > 100 || /[\u0000-\u001f\u007f]/.test(name)) errors.name = "Add meg a neved.";
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = "Adj meg egy érvényes e-mail-címet.";
   }
-  if (!/^[0-9+()\-\s]{6,20}$/.test(phone) || phone.replace(/\D/g, "").length < 6) {
+  if (!/^[0-9+()\- ]{6,20}$/.test(phone) || phone.replace(/\D/g, "").length < 6) {
     errors.phone = "Adj meg egy érvényes telefonszámot.";
   }
   if (!isPlacement(placement)) errors.placement = "Válaszd ki a testtájat.";
@@ -1384,9 +1443,19 @@ export function createRateLimiter({
   }
 
   return {
-    allowed: (key: string) => recent(key).length < limit,
-    record: (key: string) => {
-      events.set(key, [...recent(key), now()]);
+    /** Counts one event if the key is under its limit; false once it is reached. Synchronous, so parallel requests can't all slip through. */
+    take(key: string) {
+      const list = recent(key);
+      if (list.length >= limit) return false;
+      events.set(key, [...list, now()]);
+      return true;
+    },
+    /** Gives back the key's latest event, e.g. when the booking it was taken for did not go through. */
+    release(key: string) {
+      const list = recent(key);
+      list.pop();
+      if (list.length > 0) events.set(key, list);
+      else events.delete(key);
     },
   };
 }
@@ -1398,7 +1467,7 @@ export function createRateLimiter({
 npx vitest run tests/unit/booking-input.test.ts tests/unit/rate-limit.test.ts
 ```
 
-Expected: PASS (7 teszt).
+Expected: PASS (18 teszt).
 
 - [ ] **Step 6: Commit**
 

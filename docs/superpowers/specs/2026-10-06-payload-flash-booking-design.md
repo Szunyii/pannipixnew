@@ -172,7 +172,7 @@ A levelek a Bookings `afterChange` hookjából mennek. Ha a küldés nem sikerü
 
 | Esemény | Címzett | Tartalom |
 |---|---|---|
-| Nyilvános létrehozás | admin (`ADMIN_EMAIL`) | ügyféladatok, minta, időpont, link: `${NEXT_PUBLIC_SERVER_URL}/admin/collections/bookings/{id}` |
+| Nyilvános létrehozás | admin (`ADMIN_EMAIL`) | ügyféladatok, minta, időpont, link: `${SITE_URL}/admin/collections/bookings/{id}` |
 | Létrehozás `pending` állapotban | ügyfél | „Megkaptam a foglalásod”: minta, időpont, ár, „hamarosan visszaigazolom” |
 | Váltás `confirmed`-re (vagy létrehozás így) | ügyfél | „Jóváhagyva”: végleges időpont, minta, ár |
 | Váltás `rejected`-re | ügyfél | rövid, udvarias elutasítás, link a mintákhoz |
@@ -254,7 +254,7 @@ Natív `<dialog>` fókuszkezeléssel és Esc-re zárással. Mobilon teljes képe
 PAYLOAD_SECRET=            # hosszú véletlen string
 DATABASE_URL=file:./.data/pannipix.db
 MEDIA_DIR=./.data/media
-NEXT_PUBLIC_SERVER_URL=http://localhost:3000
+SITE_URL=http://localhost:3000
 ADMIN_EMAIL=hello@pannipix.hu
 EMAIL_FROM=PANNIPIX <hello@pannipix.hu>
 SMTP_HOST=smtp.hostinger.com

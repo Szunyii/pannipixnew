@@ -64,10 +64,10 @@
 ```bash
 npm install --save-exact payload@3.90.2 @payloadcms/next@3.90.2 @payloadcms/db-sqlite@3.90.2 @payloadcms/email-nodemailer@3.90.2 @payloadcms/translations@3.90.2
 npm install graphql@^16.8.1 sharp@^0.35.5
-npm install --save-dev vitest@^5.0.3 vite-tsconfig-paths@^6.1.1
+npm install --save-dev @types/node@^22 vite@^8 vitest@^5.0.3 vite-tsconfig-paths@^6.1.1
 ```
 
-Ha az npm `ERESOLVE` peer dependency hibát ad, ismételd meg ugyanazt a parancsot `--legacy-peer-deps` kapcsolóval (a Payload dokumentációja ezt javasolja npm-hez).
+A `@types/node@^22` azért kell, mert a vitest 5 opcionális peer függősége `@types/node ^22 || >=24`. A `--legacy-peer-deps` kapcsolót ne használd: kihagyná a `vite`-ot a lockfile-ból, és utána egy sima `npm ci` elbukna.
 
 Expected: a `package.json` `dependencies` szakaszában megjelenik a `payload`, `@payloadcms/next`, `@payloadcms/db-sqlite`, `@payloadcms/email-nodemailer`, `@payloadcms/translations` (mind `3.90.2`), a `graphql` és a `sharp`.
 
@@ -81,7 +81,7 @@ A `"private": true,` sor után vedd fel ezt: `"type": "module",`. A `scripts` bl
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "payload": "payload",
     "generate:types": "payload generate:types",
@@ -127,7 +127,8 @@ A `globalIgnores([...])` tömbbe a `"next-env.d.ts",` sor után vedd fel:
 - [ ] **Step 6: `.env.example` létrehozása**
 
 ```dotenv
-# Long random string, e.g. `openssl rand -hex 32`. Signs admin sessions.
+# Required. Long random string, e.g. `openssl rand -hex 32`. Signs admin sessions,
+# so changing it logs every admin out.
 PAYLOAD_SECRET=
 
 # SQLite file and uploaded images. On Hostinger point both OUTSIDE the deploy folder,
@@ -135,13 +136,15 @@ PAYLOAD_SECRET=
 DATABASE_URL=file:./.data/pannipix.db
 MEDIA_DIR=./.data/media
 
-# Public address of the site, used for links in emails.
-NEXT_PUBLIC_SERVER_URL=http://localhost:3000
+# Public address of the site, used for links in emails. Read at runtime.
+SITE_URL=http://localhost:3000
 
 # Who gets the "new booking" email.
 ADMIN_EMAIL=hello@pannipix.hu
 
 # Outgoing email (Hostinger SMTP). Leave SMTP_HOST empty in development: emails are logged instead.
+# EMAIL_FROM_ADDRESS should be the mailbox that SMTP_USER authenticates as.
+# SMTP_PORT 465 means implicit TLS (the config sets `secure` only for 465; 587 uses STARTTLS).
 EMAIL_FROM_ADDRESS=hello@pannipix.hu
 EMAIL_FROM_NAME=PANNIPIX
 SMTP_HOST=
@@ -558,7 +561,7 @@ process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 process.env.MEDIA_DIR = path.join(dir, "media");
 process.env.PAYLOAD_SECRET = "test-secret";
 process.env.ADMIN_EMAIL = "admin@example.com";
-process.env.NEXT_PUBLIC_SERVER_URL = "https://pannipix.test";
+process.env.SITE_URL = "https://pannipix.test";
 delete process.env.SMTP_HOST;
 ```
 
@@ -2847,7 +2850,7 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
   });
   if (kinds.length === 0) return doc;
 
-  const siteUrl = (process.env.NEXT_PUBLIC_SERVER_URL || "http://localhost:3000").replace(/\/$/, "");
+  const siteUrl = (process.env.SITE_URL || "http://localhost:3000").replace(/\/$/, "");
   const adminEmail = process.env.ADMIN_EMAIL;
   const data: BookingEmailData = {
     name: doc.name,
@@ -4934,6 +4937,7 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 
 ## Élesítés (Hostinger, Node.js alkalmazás)
 
+0. Node.js verzió: 22 (a hPanelben kiválasztva). Az oldal 20.9 felett is fut, a tesztekhez viszont legalább 22.12 kell.
 1. Környezeti változók: az `.env.example` összes kulcsa. A `DATABASE_URL` és a `MEDIA_DIR` a **deploy mappán kívüli**, írható könyvtárra mutasson, például:
    - `DATABASE_URL=file:/home/<felhasználó>/pannipix-data/pannipix.db`
    - `MEDIA_DIR=/home/<felhasználó>/pannipix-data/media`

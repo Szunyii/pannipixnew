@@ -19,9 +19,19 @@ export function createRateLimiter({
   }
 
   return {
-    allowed: (key: string) => recent(key).length < limit,
-    record: (key: string) => {
-      events.set(key, [...recent(key), now()]);
+    /** Counts one event if the key is under its limit; false once it is reached. Synchronous, so parallel requests can't all slip through. */
+    take(key: string) {
+      const list = recent(key);
+      if (list.length >= limit) return false;
+      events.set(key, [...list, now()]);
+      return true;
+    },
+    /** Gives back the key's latest event, e.g. when the booking it was taken for did not go through. */
+    release(key: string) {
+      const list = recent(key);
+      list.pop();
+      if (list.length > 0) events.set(key, list);
+      else events.delete(key);
     },
   };
 }

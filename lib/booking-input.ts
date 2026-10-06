@@ -31,8 +31,9 @@ export type FieldErrors = Partial<Record<BookingField, string>>;
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
 const positiveInt = (value: unknown) => {
-  const n = Number(text(value));
-  return Number.isInteger(n) && n > 0 ? n : null;
+  const raw = text(value);
+  const n = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
 };
 
 const isPlacement = (value: string): value is Placement => PLACEMENTS.some((p) => p.value === value);
@@ -52,11 +53,11 @@ export function parseBookingInput(
 
   if (designId === null) errors.designId = "Hiányzik a minta.";
   if (slotId === null) errors.slotId = "Válassz időpontot.";
-  if (name.length < 2 || name.length > 100) errors.name = "Add meg a neved.";
+  if (name.length < 2 || name.length > 100 || /[\u0000-\u001f\u007f]/.test(name)) errors.name = "Add meg a neved.";
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     errors.email = "Adj meg egy érvényes e-mail-címet.";
   }
-  if (!/^[0-9+()\-\s]{6,20}$/.test(phone) || phone.replace(/\D/g, "").length < 6) {
+  if (!/^[0-9+()\- ]{6,20}$/.test(phone) || phone.replace(/\D/g, "").length < 6) {
     errors.phone = "Adj meg egy érvényes telefonszámot.";
   }
   if (!isPlacement(placement)) errors.placement = "Válaszd ki a testtájat.";

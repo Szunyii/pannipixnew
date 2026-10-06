@@ -66,6 +66,36 @@ describe("parseBookingInput", () => {
     const result = parseBookingInput({ ...valid, website: "spam.example" });
     expect(result.ok && result.data.website).toBe("spam.example");
   });
+
+  it.each(["1e3", "0x10", "12.0", "99999999999999999999"])("rejects %j as a design or slot id", (id) => {
+    const result = parseBookingInput({ ...valid, designId: id, slotId: id });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.fieldErrors).toEqual({ designId: "Hiányzik a minta.", slotId: "Válassz időpontot." });
+  });
+
+  it("rejects a line break in the phone number", () => {
+    const result = parseBookingInput({ ...valid, phone: "123\n456789" });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.fieldErrors).toEqual({ phone: "Adj meg egy érvényes telefonszámot." });
+  });
+
+  it.each([
+    ["line break", "Anna\nBcc: x"],
+    ["tab", "Anna\tKiss"],
+    ["delete character", "Anna\u007fKiss"],
+  ])("rejects a %s in the name", (_kind, name) => {
+    const result = parseBookingInput({ ...valid, name });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.fieldErrors).toEqual({ name: "Add meg a neved." });
+  });
+
+  it("keeps line breaks in the note, which comes from a textarea", () => {
+    const result = parseBookingInput({ ...valid, note: "Bal alkar\nkülső oldal" });
+    expect(result.ok && result.data.note).toBe("Bal alkar\nkülső oldal");
+  });
 });
 
 describe("placementLabel", () => {

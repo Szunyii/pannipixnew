@@ -21,12 +21,15 @@ const nextConfig: NextConfig = {
 
 const config = withPayload(nextConfig, { devBundleServerPackages: false });
 
-// Payload asks for the colour-scheme client hint so the admin can theme its first paint. Only the admin
-// needs it; on the public site the critical hint makes Chromium load a first visit twice.
+// Payload adds a site-wide rule asking for the colour-scheme client hint so the admin can theme its first
+// paint. Only the admin needs it; on the public site the critical hint makes Chromium load a first visit
+// twice. The rule is recognised by its Critical-CH header, so other site-wide rules keep applying everywhere.
 export default {
   ...config,
   headers: async () =>
     ((await config.headers?.()) ?? []).map((rule) =>
-      rule.source === "/:path*" ? { ...rule, source: "/admin/:path*" } : rule,
+      rule.source === "/:path*" && rule.headers.some((header) => header.key === "Critical-CH")
+        ? { ...rule, source: "/admin/:path*" }
+        : rule,
     ),
 } satisfies NextConfig;

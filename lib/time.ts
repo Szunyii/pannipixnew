@@ -3,6 +3,8 @@ export const TIME_ZONE = "Europe/Budapest";
 const hu = (options: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat("hu-HU", { timeZone: TIME_ZONE, ...options });
 
+// en-CA on purpose: it formats as YYYY-MM-DD, which zonedTimeToUtc and the seed build dates from. Don't "simplify" it
+// to hu-HU, that gives "2026. 10. 14.".
 const dayKeyFormat = new Intl.DateTimeFormat("en-CA", {
   timeZone: TIME_ZONE,
   year: "numeric",
@@ -15,6 +17,7 @@ const fullFormat = hu({ year: "numeric", month: "long", day: "numeric", weekday:
 const numericDateFormat = hu({ year: "numeric", month: "2-digit", day: "2-digit" });
 const weekdayFormat = hu({ weekday: "long" });
 
+/** A Date, or an ISO string with "Z" or an offset, as Payload returns dates (a date-time string without either is read in the machine's zone). */
 type DateInput = Date | string;
 const toDate = (value: DateInput) => (value instanceof Date ? value : new Date(value));
 
@@ -51,7 +54,11 @@ function offsetAt(ms: number) {
   return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(ms / 1000) * 1000;
 }
 
-/** Reads a wall-clock time ("2026-10-14", "10:00") as Budapest time and returns it as a UTC ISO string. */
+/**
+ * Reads a wall-clock time as Budapest time and returns it as a UTC ISO string. The input is trusted, not validated:
+ * `day` is "YYYY-MM-DD" and `time` is "HH:mm", e.g. ("2026-10-14", "10:00"). A time skipped by the spring clock change
+ * moves forward one hour; a time repeated in autumn resolves to the later, winter-time instant.
+ */
 export function zonedTimeToUtc(day: string, time: string): string {
   const asUtc = Date.parse(`${day}T${time}:00.000Z`);
   // The first guess can lie across a summer-time change from asUtc, so read the offset again at the guess.

@@ -20,6 +20,7 @@
 - **Dev adatbázis:** fejlesztésben a Payload `push` módban szinkronizálja a sémát. Ha egy sémaváltozás után a dev szerver adatvesztésre figyelmeztetve kérdez a terminálban, a legegyszerűbb az újrakezdés: `rm -rf .data && npm run seed`.
 - **Commit üzenetek** végére mindig kerüljön oda: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Minden parancs a repó gyökeréből fut: `/Users/szunyoghdavid/Documents/pannipix`.
+- **Más projektek szerverei:** a gépen más projektek Next szerverei is futnak, az egyik a 3000-es porton. **Soha ne használj `pkill`-t vagy `killall`-t.** A saját szervert explicit porton indítsd (dev: `3210`, prod: `3211`), saját folyamatcsoportban (`set -m`), és a végén csak azt a csoportot állítsd le: `kill -TERM -- -"$PID"`.
 
 ## Fájltérkép
 
@@ -484,13 +485,16 @@ Expected: mindkét fájl létezik, a `payload-types.ts`-ben szerepel az `export 
 - [ ] **Step 9: Dev szerver próba**
 
 ```bash
-(npm run dev > /tmp/pannipix-dev.log 2>&1 &) ; for i in $(seq 1 60); do curl -s -o /dev/null http://localhost:3000/ && break; sleep 1; done
-curl -s -o /dev/null -w "front %{http_code}\n" http://localhost:3000/
-curl -s -L -o /dev/null -w "admin %{http_code} %{url_effective}\n" http://localhost:3000/admin
-pkill -f "next dev"
+set -m
+node_modules/.bin/next dev --port 3210 > /tmp/pannipix-dev.log 2>&1 &
+PID=$!
+for i in $(seq 1 90); do curl -s -o /dev/null http://localhost:3210/ && break; sleep 1; done
+curl -s -o /dev/null -w "front %{http_code}\n" http://localhost:3210/
+curl -s -L -o /dev/null -w "admin %{http_code} %{url_effective}\n" http://localhost:3210/admin
+kill -TERM -- -"$PID"
 ```
 
-Expected: `front 200`, majd `admin 200 http://localhost:3000/admin/create-first-user`. Ha bármelyik 500, nézd meg a `/tmp/pannipix-dev.log` fájlt.
+Expected: `front 200`, majd `admin 200 http://localhost:3210/admin/create-first-user`. Ha bármelyik 500, nézd meg a `/tmp/pannipix-dev.log` fájlt.
 
 - [ ] **Step 10: Lint, typecheck**
 
@@ -4856,12 +4860,14 @@ Expected: sikeres build. A `/` útvonal a listában dinamikus (`ƒ`), nem statik
 - [ ] **Step 4: Éles indítás friss adatbázison (a migráció próbája)**
 
 ```bash
-(DATABASE_URL=file:./.data/prod-check.db MEDIA_DIR=./.data/prod-check-media PORT=3100 npm start > /tmp/pannipix-prod.log 2>&1 &)
-for i in $(seq 1 60); do curl -s -o /dev/null http://localhost:3100/ && break; sleep 1; done
-curl -s -o /dev/null -w "front %{http_code}\n" http://localhost:3100/
-curl -s -L -o /dev/null -w "admin %{http_code}\n" http://localhost:3100/admin
+set -m
+DATABASE_URL=file:./.data/prod-check.db MEDIA_DIR=./.data/prod-check-media node_modules/.bin/next start --port 3211 > /tmp/pannipix-prod.log 2>&1 &
+PID=$!
+for i in $(seq 1 60); do curl -s -o /dev/null http://localhost:3211/ && break; sleep 1; done
+curl -s -o /dev/null -w "front %{http_code}\n" http://localhost:3211/
+curl -s -L -o /dev/null -w "admin %{http_code}\n" http://localhost:3211/admin
 sqlite3 .data/prod-check.db ".tables"
-pkill -f "next start"
+kill -TERM -- -"$PID"
 rm -rf .data/prod-check.db* .data/prod-check-media
 ```
 
@@ -4972,7 +4978,7 @@ Expected: minden zöld, a tesztösszesítőben 0 failed.
 
 - [ ] **Step 2: Böngészős végigjátszás** (a `run` skill segítségével, vagy kézzel)
 
-Előkészítés: `rm -rf .data && npm run seed && npm run dev`.
+Előkészítés: `rm -rf .data && npm run seed`, majd a dev szerver a 3210-es porton, saját folyamatcsoportban (lásd Task 2, Step 9). Az URL-ek: `http://localhost:3210/` és `http://localhost:3210/admin`. A végén csak ezt a folyamatcsoportot állítsd le.
 
 Admin, asztali nézet (1280 px):
 1. `/admin` → admin fiók létrehozása → a menüben a *Foglalás* (Foglalások, Időpontok), a *Flash* (Flash minták, Kollekciók, Képek) és a *Beállítások* (Adminok) csoport látszik, magyarul.

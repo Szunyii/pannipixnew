@@ -3234,8 +3234,11 @@ EOF
 **Files:**
 - Create: `lib/flash-types.ts`
 - Create: `lib/flash.ts`
+- Create: `lib/client-address.ts`
 - Create: `app/(frontend)/actions.ts`
+- Modify: `.env.example`
 - Test: `tests/int/flash-data.test.ts`
+- Test: `tests/unit/client-address.test.ts`
 
 - [ ] **Step 1: `lib/flash-types.ts`: a frontend által használt alakok**
 
@@ -3452,7 +3455,119 @@ npx vitest run tests/int/flash-data.test.ts
 
 Expected: PASS (3 teszt).
 
-- [ ] **Step 6: `app/(frontend)/actions.ts`**
+- [ ] **Step 6: A látogató címe: a bukó teszt (`tests/unit/client-address.test.ts`)**
+
+A foglalási korlát a látogató címére kulcsol. A Next 16 magától kitölti az `X-Forwarded-For` fejlécet a socket címével, ha a proxy nem küld ilyet. Ezért a fejléc bal oldali eleme hamisítható, a jobb szélső pedig proxy nélkül a saját loopback cím lehet. A megbízható elem jobbról a `TRUSTED_PROXY_HOPS`-adik. Ha nincs használható nyilvános cím, nincs kulcs, és a korlát kimarad, nehogy mindenki egy közös keretet kapjon.
+
+```ts
+import { describe, expect, it } from "vitest";
+import { clientAddress } from "@/lib/client-address";
+
+describe("clientAddress", () => {
+  it("takes the entry our own proxy added, not the one the visitor sent", () => {
+    // The visitor sent "X-Forwarded-For: 6.6.6.6"; the proxy appended the address it actually saw.
+    expect(clientAddress("6.6.6.6, 203.0.113.9")).toBe("203.0.113.9");
+    expect(clientAddress("203.0.113.9")).toBe("203.0.113.9");
+  });
+
+  it("counts the trusted hops from the right", () => {
+    expect(clientAddress("6.6.6.6, 203.0.113.9, 198.51.100.7", 2)).toBe("203.0.113.9");
+    expect(clientAddress("203.0.113.9", 2)).toBeNull();
+  });
+
+  it("trusts nothing when hops is below 1", () => {
+    expect(clientAddress("203.0.113.9", 0)).toBeNull();
+  });
+
+  it.each([
+    ["no header", null],
+    ["an empty header", ""],
+    ["junk", "not-an-address"],
+    ["a port glued on", "203.0.113.9:4711"],
+    ["an IPv4 loopback", "127.0.0.1"],
+    ["an IPv4-mapped loopback, which is what Next fills in when the proxy sent nothing", "::ffff:127.0.0.1"],
+    ["an IPv6 loopback", "::1"],
+    ["a private address", "10.1.2.3"],
+    ["another private range", "172.20.0.5"],
+    ["a unique-local IPv6 address", "fd00::1"],
+  ])("has no address for %s", (_what, header) => {
+    expect(clientAddress(header)).toBeNull();
+  });
+
+  it("reads an IPv4-mapped address as the IPv4 one", () => {
+    expect(clientAddress("::ffff:203.0.113.9")).toBe("203.0.113.9");
+  });
+
+  it("identifies an IPv6 visitor by their /64", () => {
+    const a = clientAddress("2001:db8:1:2:aaaa:bbbb:cccc:dddd");
+    const b = clientAddress("2001:DB8:1:2::1");
+    expect(a).toBe("2001:db8:1:2::/64");
+    expect(b).toBe(a);
+    expect(clientAddress("2001:db8:1:3::1")).not.toBe(a);
+  });
+
+  it("expands :: before cutting the prefix", () => {
+    expect(clientAddress("2001:db8::1")).toBe("2001:db8:0:0::/64");
+  });
+});
+```
+
+```bash
+npx vitest run tests/unit/client-address.test.ts
+```
+
+Expected: FAIL, `Cannot find package '@/lib/client-address'` (a modul még nem létezik).
+
+- [ ] **Step 7: `lib/client-address.ts`**
+
+```ts
+import { isIP } from "node:net";
+
+/** Loopback, private, link-local and unspecified addresses: a hop inside the host's own network, not a visitor. */
+const INTERNAL = /^(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|0\.|::1?$|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i;
+
+/** An IPv6 visitor can pick any address in their /64, so that prefix is what identifies them. */
+function ipv6Prefix(ip: string) {
+  const [head = "", tail = ""] = ip.split("::");
+  const headGroups = head ? head.split(":") : [];
+  const tailGroups = tail ? tail.split(":") : [];
+  const missing = ip.includes("::") ? Math.max(0, 8 - headGroups.length - tailGroups.length) : 0;
+  const groups = [...headGroups, ...Array<string>(missing).fill("0"), ...tailGroups];
+  return `${groups.slice(0, 4).map((g) => g.toLowerCase().replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+
+/**
+ * The visitor's address as the nearest trusted proxy saw it: the entry `hops` places from the right of
+ * X-Forwarded-For. Everything to its left is whatever the visitor chose to send. Null when there is no usable
+ * public address (no header, hops < 1, an internal hop, junk), so the caller skips its per-address limit.
+ */
+export function clientAddress(forwardedFor: string | null, hops = 1): string | null {
+  if (hops < 1) return null;
+  const entries = (forwardedFor ?? "").split(",").map((entry) => entry.trim());
+  const candidate = entries[entries.length - hops]?.replace(/^::ffff:/i, "");
+  if (!candidate || !isIP(candidate) || INTERNAL.test(candidate)) return null;
+  return isIP(candidate) === 6 ? ipv6Prefix(candidate) : candidate;
+}
+```
+
+```bash
+npx vitest run tests/unit/client-address.test.ts
+```
+
+Expected: PASS (16 teszt).
+
+- [ ] **Step 8: `.env.example`: a proxy-hopok száma**
+
+A fájl végére:
+
+```dotenv
+
+# Proxies in front of the app that append to X-Forwarded-For: 1 for Hostinger's own, 2 with its CDN switched on.
+# The booking limit (3 per visitor per hour) keys on the address that many entries from the right; 0 turns it off.
+TRUSTED_PROXY_HOPS=1
+```
+
+- [ ] **Step 9: `app/(frontend)/actions.ts`**
 
 ```ts
 "use server";
@@ -3463,6 +3578,7 @@ import { getPayload } from "payload";
 import type { PublicBookingCode } from "@/cms/booking/errors";
 import { createPublicBooking } from "@/cms/booking/public";
 import { type FieldErrors, parseBookingInput } from "@/lib/booking-input";
+import { clientAddress } from "@/lib/client-address";
 import { listOpenSlots } from "@/lib/flash";
 import { createRateLimiter } from "@/lib/rate-limit";
 import type { SlotDay } from "@/lib/time";
@@ -3472,8 +3588,10 @@ export type BookFlashState =
   | { status: "success" }
   | { status: "error"; code: PublicBookingCode | "invalid" | "rate_limited"; fieldErrors?: FieldErrors };
 
-// At most three bookings an hour from one address, so nobody can lock up the whole calendar.
+// At most three bookings an hour from one visitor, so nobody can lock up the whole calendar.
 const limiter = createRateLimiter({ limit: 3, windowMs: 60 * 60 * 1000 });
+// Proxies in front of the app that append to X-Forwarded-For (see .env.example); 0 turns the limit off.
+const trustedProxyHops = Number(process.env.TRUSTED_PROXY_HOPS ?? 1);
 
 export async function getOpenSlots(): Promise<SlotDay[]> {
   return listOpenSlots();
@@ -3482,28 +3600,29 @@ export async function getOpenSlots(): Promise<SlotDay[]> {
 export async function bookFlash(formData: FormData): Promise<BookFlashState> {
   const parsed = parseBookingInput(Object.fromEntries(formData));
   if (!parsed.ok) return { status: "error", code: "invalid", fieldErrors: parsed.fieldErrors };
+
+  const payload = await getPayload({ config });
   // Bots fill the hidden field: tell them it worked and store nothing.
-  if (parsed.data.website) return { status: "success" };
+  if (parsed.data.website) {
+    payload.logger.warn("Booking form honeypot filled in; nothing stored.");
+    return { status: "success" };
+  }
 
-  const address = await clientAddress();
-  if (!limiter.take(address)) return { status: "error", code: "rate_limited" };
+  // No usable visitor address (e.g. an unexpected proxy setup): skip the limit rather than share one bucket.
+  const address = clientAddress((await headers()).get("x-forwarded-for"), trustedProxyHops);
+  if (address && !limiter.take(address)) return { status: "error", code: "rate_limited" };
 
-  const result = await createPublicBooking(await getPayload({ config }), parsed.data);
+  const result = await createPublicBooking(payload, parsed.data);
   if (!result.ok) {
     // Only bookings that went through count against the limit.
-    limiter.release(address);
+    if (address) limiter.release(address);
     return { status: "error", code: result.code };
   }
   return { status: "success" };
 }
-
-async function clientAddress() {
-  const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "unknown";
-}
 ```
 
-- [ ] **Step 7: Lint, typecheck, teljes tesztkészlet**
+- [ ] **Step 10: Lint, typecheck, teljes tesztkészlet**
 
 ```bash
 npm run lint && npm run typecheck && npm test
@@ -3511,10 +3630,10 @@ npm run lint && npm run typecheck && npm test
 
 Expected: minden zöld.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add lib/flash-types.ts lib/flash.ts "app/(frontend)/actions.ts" tests/int/flash-data.test.ts
+git add lib/flash-types.ts lib/flash.ts lib/client-address.ts .env.example "app/(frontend)/actions.ts" tests/int/flash-data.test.ts tests/unit/client-address.test.ts
 git commit -m "$(cat <<'EOF'
 feat: read the flash catalog and open slots from Payload; booking server actions
 
@@ -4523,6 +4642,7 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
                 <TextField
                   label="Név"
                   name="name"
+                  maxLength={100}
                   autoComplete="name"
                   autoCapitalize="words"
                   enterKeyHint="next"
@@ -4587,6 +4707,7 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
                     maxLength={1000}
                     placeholder="Pontos hely, méret, kérdés…"
                     aria-invalid={errors.note ? true : undefined}
+                    aria-describedby={errors.note ? `${noteId}-error` : undefined}
                     className={`${field} resize-none leading-[1.6]`}
                   />
                   <ErrorText id={`${noteId}-error`}>{errors.note}</ErrorText>
@@ -4594,7 +4715,14 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
               </div>
 
               <label className="mt-8 flex min-h-11 cursor-pointer select-none items-center gap-3 text-[0.9375rem] text-graphite">
-                <input type="checkbox" name="adult" required className="size-[1.125rem] cursor-pointer accent-ink" />
+                <input
+                  type="checkbox"
+                  name="adult"
+                  required
+                  aria-invalid={errors.adult ? true : undefined}
+                  aria-describedby={errors.adult ? "booking-adult-error" : undefined}
+                  className="size-[1.125rem] cursor-pointer accent-ink"
+                />
                 Elmúltam 18 éves.
               </label>
               <ErrorText id="booking-adult-error">{errors.adult}</ErrorText>
@@ -5253,6 +5381,12 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 2. Build: `npm run build`, indítás: `npm start`. Induláskor a Payload lefuttatja a még nem futtatott migrációkat. Ha a build memóriahiány miatt leáll: `NODE_OPTIONS=--max-old-space-size=4096 npm run build`.
 3. **HTTPS:** az admin bejelentkezéshez kell, mert a munkamenet-süti élesben csak HTTPS-en él. Kapcsold be az SSL-t a domainhez.
 4. Első indítás után: `/admin` → admin fiók → kollekciók, minták és időpontok felvétele.
+   Ezután próbáld ki élőben is:
+   - Foglalj egy időpontot az oldalon.
+   - Egy eszközről 4 gyors foglalás: a 4. elutasítva.
+   - Egy másik hálózatról (pl. mobilnetről) még lehet foglalni.
+
+   Ha a 4. foglalás is átmegy, vagy a másik hálózatról sem lehet foglalni, állítsd át a `TRUSTED_PROXY_HOPS`-t: a Hostinger CDN bekapcsolásával 2.
 5. **Mentés:** a `pannipix-data` mappát (adatbázis + képek) rendszeresen menteni kell.
 
 Feltételezés: egyetlen Node processz fut. A foglalási korlát (IP-nként óránként 3) a memóriában számol.

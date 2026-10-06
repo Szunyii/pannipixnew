@@ -1695,6 +1695,8 @@ export const Categories: CollectionConfig = {
     {
       name: "limit",
       type: "number",
+      // Selects Payload's single-number field type, so validate's arguments below are typed.
+      hasMany: false,
       label: "Alkalmak száma",
       admin: {
         condition: (_, siblingData) => siblingData?.rule === "limited",
@@ -1898,7 +1900,13 @@ export const Slots: CollectionConfig = {
       required: true,
       unique: true,
       label: "Kezdés",
-      timezone: { defaultTimezone: TIME_ZONE, supportedTimezones: [{ label: "Budapest", value: TIME_ZONE }] },
+      timezone: {
+        defaultTimezone: TIME_ZONE,
+        supportedTimezones: [{ label: "Budapest", value: TIME_ZONE }],
+        // Budapest is the only zone and Payload fills it in; left required, the generated type would make every
+        // slot create pass startsAt_tz. The admin's zone picker stays required: it follows startsAt's `required`.
+        override: ({ baseField }) => ({ ...baseField, required: false }),
+      },
       admin: {
         date: {
           pickerAppearance: "dayAndTime",

@@ -537,7 +537,7 @@ EOF
 - Create: `vitest.config.ts`
 - Create: `tests/setup.ts`
 - Create: `tests/helpers.ts`
-- Create: `tests/fixtures/sample.webp` (480×640-es fehér WebP, sharp-pal generálva; a tesztek így nem függnek a helyőrző grafikáktól)
+- Create: `tests/fixtures/sample.webp`: 480×640-es fehér WebP, így a tesztek nem függnek a helyőrző grafikáktól. Generálás: `node -e 'require("sharp")({create:{width:480,height:640,channels:3,background:"#ffffff"}}).webp().toFile("tests/fixtures/sample.webp")'`
 - Test: `tests/int/payload.test.ts`
 
 - [ ] **Step 1: `vitest.config.ts`**

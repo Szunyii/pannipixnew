@@ -8,12 +8,13 @@ import { buildConfig } from "payload";
 import sharp from "sharp";
 import { Media } from "./cms/collections/Media";
 import { Users } from "./cms/collections/Users";
+import { dataLocation } from "./cms/env";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** SQLite lives in a file; on Hostinger DATABASE_URL points outside the deploy folder so redeploys keep it. */
 function databaseUrl() {
-  const url = process.env.DATABASE_URL || `file:${path.resolve(dirname, ".data/pannipix.db")}`;
+  const url = dataLocation("DATABASE_URL", "file:./.data/pannipix.db");
   if (url.startsWith("file:")) {
     try {
       fs.mkdirSync(path.dirname(path.resolve(url.slice("file:".length))), { recursive: true });
@@ -44,11 +45,17 @@ export default buildConfig({
     ? nodemailerAdapter({
         defaultFromAddress: process.env.EMAIL_FROM_ADDRESS || "hello@pannipix.hu",
         defaultFromName: process.env.EMAIL_FROM_NAME || "PANNIPIX",
+        // `next build` evaluates this config too; don't dial the SMTP server from the build.
+        skipVerify: process.env.NEXT_PHASE === "phase-production-build",
         transportOptions: {
           host: process.env.SMTP_HOST,
           port: smtpPort,
           secure: smtpPort === 465,
           auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+          // Give up fast instead of nodemailer's 2 min / 30 s / 10 min defaults.
+          connectionTimeout: 10_000,
+          greetingTimeout: 10_000,
+          socketTimeout: 20_000,
         },
       })
     : undefined,

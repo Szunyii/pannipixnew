@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { CollectionConfig } from "payload";
 import { anyone, isAdmin } from "../access";
+import { dataLocation } from "../env";
 
 export const Media: CollectionConfig = {
   slug: "media",
@@ -9,7 +10,7 @@ export const Media: CollectionConfig = {
   access: { read: anyone, create: isAdmin, update: isAdmin, delete: isAdmin },
   upload: {
     // Outside the deploy folder in production (MEDIA_DIR), so uploads survive a redeploy.
-    staticDir: path.resolve(process.env.MEDIA_DIR || ".data/media"),
+    staticDir: path.resolve(/* turbopackIgnore: true */ dataLocation("MEDIA_DIR", ".data/media")),
     mimeTypes: ["image/jpeg", "image/png", "image/webp", "image/avif"],
     imageSizes: [{ name: "thumbnail", width: 320 }],
     adminThumbnail: "thumbnail",

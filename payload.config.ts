@@ -63,5 +63,12 @@ export default buildConfig({
   i18n: { supportedLanguages: { hu }, fallbackLanguage: "hu" },
   secret: process.env.PAYLOAD_SECRET || "",
   sharp,
-  typescript: { outputFile: path.resolve(dirname, "payload-types.ts") },
+  // Payload otherwise runs `git config` and posts anonymous usage data on every init, test files included.
+  telemetry: false,
+  typescript: {
+    outputFile: path.resolve(dirname, "payload-types.ts"),
+    // Payload regenerates types in a child process on every dev start; under Vitest that child would outlive
+    // the test file and read the developer's .env. `npm run generate:types` remains the writer for tests.
+    autoGenerate: !process.env.VITEST,
+  },
 });

@@ -1,4 +1,4 @@
-import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { getTestPayload } from "../helpers";
 
@@ -8,9 +8,9 @@ describe("payload", () => {
     const media = await payload.create({
       collection: "media",
       data: { alt: "Teszt kép" },
-      filePath: path.resolve("public/flash/pcons-027-large.webp"),
+      filePath: fileURLToPath(new URL("../fixtures/sample.webp", import.meta.url)),
     });
-    expect(media.url).toMatch(/^\/api\/media\/file\/pcons-027-large.*\.webp$/);
+    expect(media.url).toMatch(/^\/api\/media\/file\/sample.*\.webp$/);
     expect(media.sizes?.thumbnail?.width).toBe(320);
   });
 });

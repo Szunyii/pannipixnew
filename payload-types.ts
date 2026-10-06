@@ -12,54 +12,7 @@
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "supportedTimezones".
  */
-export type SupportedTimezones =
-  | 'Pacific/Midway'
-  | 'Pacific/Niue'
-  | 'Pacific/Honolulu'
-  | 'Pacific/Rarotonga'
-  | 'America/Anchorage'
-  | 'Pacific/Gambier'
-  | 'America/Los_Angeles'
-  | 'America/Tijuana'
-  | 'America/Denver'
-  | 'America/Phoenix'
-  | 'America/Chicago'
-  | 'America/Guatemala'
-  | 'America/New_York'
-  | 'America/Bogota'
-  | 'America/Caracas'
-  | 'America/Santiago'
-  | 'America/Buenos_Aires'
-  | 'America/Sao_Paulo'
-  | 'Atlantic/South_Georgia'
-  | 'Atlantic/Azores'
-  | 'Atlantic/Cape_Verde'
-  | 'Europe/London'
-  | 'Europe/Berlin'
-  | 'Africa/Lagos'
-  | 'Europe/Athens'
-  | 'Africa/Cairo'
-  | 'Europe/Moscow'
-  | 'Asia/Riyadh'
-  | 'Asia/Dubai'
-  | 'Asia/Baku'
-  | 'Asia/Karachi'
-  | 'Asia/Tashkent'
-  | 'Asia/Calcutta'
-  | 'Asia/Dhaka'
-  | 'Asia/Almaty'
-  | 'Asia/Jakarta'
-  | 'Asia/Bangkok'
-  | 'Asia/Shanghai'
-  | 'Asia/Singapore'
-  | 'Asia/Tokyo'
-  | 'Asia/Seoul'
-  | 'Australia/Brisbane'
-  | 'Australia/Sydney'
-  | 'Pacific/Guam'
-  | 'Pacific/Noumea'
-  | 'Pacific/Auckland'
-  | 'Pacific/Fiji';
+export type SupportedTimezones = 'Europe/Budapest';
 
 export interface Config {
   auth: {
@@ -67,6 +20,10 @@ export interface Config {
   };
   blocks: {};
   collections: {
+    bookings: Booking;
+    slots: Slot;
+    designs: Design;
+    categories: Category;
     media: Media;
     users: User;
     'payload-kv': PayloadKv;
@@ -76,6 +33,10 @@ export interface Config {
   };
   collectionsJoins: {};
   collectionsSelect: {
+    bookings: BookingsSelect<false> | BookingsSelect<true>;
+    slots: SlotsSelect<false> | SlotsSelect<true>;
+    designs: DesignsSelect<false> | DesignsSelect<true>;
+    categories: CategoriesSelect<false> | CategoriesSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
@@ -118,6 +79,94 @@ export interface UserAuthOperations {
   };
 }
 /**
+ * Az oldalon beküldött és a kézzel felvett foglalások. Elutasításkor vagy lemondáskor az időpont és a minta egy alkalma újra foglalható lesz.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "bookings".
+ */
+export interface Booking {
+  id: number;
+  title?: string | null;
+  design: number | Design;
+  /**
+   * Csak szabad időpont választható.
+   */
+  slot?: (number | null) | Slot;
+  status: 'pending' | 'confirmed' | 'completed' | 'rejected' | 'cancelled';
+  name: string;
+  email: string;
+  phone: string;
+  placement: 'alkar' | 'felkar' | 'comb' | 'labszar' | 'hat' | 'oldal' | 'gerinc' | 'mas';
+  note?: string | null;
+  adultConfirmed: boolean;
+  seat?: number | null;
+  designName?: string | null;
+  slotStartsAt?: string | null;
+  price?: number | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "designs".
+ */
+export interface Design {
+  id: number;
+  title?: string | null;
+  category: number | Category;
+  /**
+   * A név után áll: 027 → P’CONs #027.
+   */
+  number: string;
+  /**
+   * Tájékoztató ár, az oldalon nincs fizetés.
+   */
+  price: number;
+  /**
+   * Az „Elkelt” címke magától kerül fel.
+   */
+  badge?: ('new' | 'last') | null;
+  size?: string | null;
+  placements?: string | null;
+  description?: string | null;
+  /**
+   * Az első kép jelenik meg a kártyán. A rajz fehér hátterű legyen, így ráolvad a panelre.
+   */
+  images: {
+    image: number | Media;
+    kind: 'art' | 'photo';
+    /**
+     * pl. Minta, Bőrön, Részlet
+     */
+    label?: string | null;
+    id?: string | null;
+  }[];
+  visible?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * A kollekció dönti el, hányszor foglalható egy-egy mintája.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "categories".
+ */
+export interface Category {
+  id: number;
+  name: string;
+  rule: 'single' | 'limited' | 'unlimited';
+  /**
+   * Hányszor foglalható egy minta ebben a kollekcióban.
+   */
+  limit?: number | null;
+  /**
+   * A kisebb szám előrébb kerül az oldalon.
+   */
+  order?: number | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media".
  */
@@ -148,6 +197,21 @@ export interface Media {
       filename?: string | null;
     };
   };
+}
+/**
+ * Szabad időpontok, amelyekre az oldalon flash mintát lehet foglalni. Egy időpontra egy foglalás jut.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "slots".
+ */
+export interface Slot {
+  id: number;
+  title?: string | null;
+  startsAt: string;
+  startsAt_tz?: SupportedTimezones;
+  state?: string | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -200,6 +264,22 @@ export interface PayloadLockedDocument {
   id: number;
   document?:
     | ({
+        relationTo: 'bookings';
+        value: number | Booking;
+      } | null)
+    | ({
+        relationTo: 'slots';
+        value: number | Slot;
+      } | null)
+    | ({
+        relationTo: 'designs';
+        value: number | Design;
+      } | null)
+    | ({
+        relationTo: 'categories';
+        value: number | Category;
+      } | null)
+    | ({
         relationTo: 'media';
         value: number | Media;
       } | null)
@@ -248,6 +328,77 @@ export interface PayloadMigration {
   batch?: number | null;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "bookings_select".
+ */
+export interface BookingsSelect<T extends boolean = true> {
+  title?: T;
+  design?: T;
+  slot?: T;
+  status?: T;
+  name?: T;
+  email?: T;
+  phone?: T;
+  placement?: T;
+  note?: T;
+  adultConfirmed?: T;
+  seat?: T;
+  designName?: T;
+  slotStartsAt?: T;
+  price?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "slots_select".
+ */
+export interface SlotsSelect<T extends boolean = true> {
+  title?: T;
+  startsAt?: T;
+  startsAt_tz?: T;
+  state?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "designs_select".
+ */
+export interface DesignsSelect<T extends boolean = true> {
+  title?: T;
+  category?: T;
+  number?: T;
+  price?: T;
+  badge?: T;
+  size?: T;
+  placements?: T;
+  description?: T;
+  images?:
+    | T
+    | {
+        image?: T;
+        kind?: T;
+        label?: T;
+        id?: T;
+      };
+  visible?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "categories_select".
+ */
+export interface CategoriesSelect<T extends boolean = true> {
+  name?: T;
+  rule?: T;
+  limit?: T;
+  order?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

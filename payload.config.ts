@@ -6,9 +6,14 @@ import { nodemailerAdapter } from "@payloadcms/email-nodemailer";
 import { hu } from "@payloadcms/translations/languages/hu";
 import { buildConfig } from "payload";
 import sharp from "sharp";
+import { Bookings } from "./cms/collections/Bookings";
+import { Categories } from "./cms/collections/Categories";
+import { Designs } from "./cms/collections/Designs";
 import { Media } from "./cms/collections/Media";
+import { Slots } from "./cms/collections/Slots";
 import { Users } from "./cms/collections/Users";
 import { dataLocation } from "./cms/env";
+import { TIME_ZONE } from "./lib/time";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,8 +37,12 @@ export default buildConfig({
     user: Users.slug,
     importMap: { baseDir: path.resolve(dirname) },
     meta: { titleSuffix: " – PANNIPIX" },
+    timezones: {
+      defaultTimezone: TIME_ZONE,
+      supportedTimezones: [{ label: "Budapest", value: TIME_ZONE }],
+    },
   },
-  collections: [Media, Users],
+  collections: [Bookings, Slots, Designs, Categories, Media, Users],
   db: sqliteAdapter({
     client: { url: databaseUrl() },
     // WAL lets the site read while a booking is written; busyTimeout waits out a brief lock instead of failing.

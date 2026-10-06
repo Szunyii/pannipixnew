@@ -186,7 +186,7 @@ A `completed` állapotra és az időpont-áthelyezésre nem megy e-mail. A sablo
 - **IP-alapú korlát, memóriában:** IP-nként óránként legfeljebb 3 létrejött foglalás. A Hostingeren egy Node processz fut; újrainduláskor a számláló nullázódik, ez elfogadott. A látogató címe az `X-Forwarded-For` jobbról `TRUSTED_PROXY_HOPS`-adik eleme (alapból 1). IPv6-nál a /64-es előtag számít. Ha nincs használható nyilvános cím, a korlát kimarad, nehogy minden látogató egy közös keretet kapjon.
 - **Bemenet-ellenőrzés:**
   - név: 2–100 karakter
-  - e-mail: érvényes formátum
+  - e-mail: érvényes formátum (ugyanaz a szabály, mint a Payload e-mail mezőjéé)
   - telefon: 6–20 karakter, legalább 6 számjegy (számjegy, szóköz, `+`, `-`, `/`, `.`, zárójel). A beillesztett számok speciális szóközei és kötőjelei normál szóközzé és kötőjellé alakulnak.
   - testtáj: a listából
   - megjegyzés: legfeljebb 1000 karakter

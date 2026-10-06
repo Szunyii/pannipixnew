@@ -736,7 +736,7 @@ describe("relationId", () => {
 npx vitest run tests/unit/booking-rules.test.ts
 ```
 
-Expected: FAIL, `Failed to resolve import "@/lib/booking-rules"`.
+Expected: FAIL, `Cannot find package '@/lib/booking-rules'` (a modul még nem létezik).
 
 - [ ] **Step 3: `lib/booking-rules.ts`**
 
@@ -893,7 +893,7 @@ describe("groupSlotsByDay", () => {
 npx vitest run tests/unit/time.test.ts
 ```
 
-Expected: FAIL, `Failed to resolve import "@/lib/time"`.
+Expected: FAIL, `Cannot find package '@/lib/time'` (a modul még nem létezik).
 
 - [ ] **Step 3: `lib/time.ts`**
 
@@ -2412,7 +2412,7 @@ describe("website bookings", () => {
 npx vitest run tests/unit/booking-errors.test.ts tests/int/public-booking.test.ts
 ```
 
-Expected: az `errors` teszt PASS (a Task 8-ban már elkészült), a `public-booking` FAIL: `Failed to resolve import "@/cms/booking/public"`.
+Expected: az `errors` teszt PASS (a Task 8-ban már elkészült), a `public-booking` FAIL: `Cannot find package '@/cms/booking/public'` (a modul még nem létezik).
 
 - [ ] **Step 3: `cms/booking/public.ts`**
 
@@ -2662,7 +2662,7 @@ describe("booking emails", () => {
 npx vitest run tests/unit/email-templates.test.ts tests/int/emails.test.ts
 ```
 
-Expected: FAIL, `Failed to resolve import "@/cms/emails/templates"`.
+Expected: FAIL, `Cannot find package '@/cms/emails/templates'` (a modul még nem létezik).
 
 - [ ] **Step 4: `cms/emails/templates.ts`**
 
@@ -3076,7 +3076,7 @@ describe("listOpenSlots", () => {
 npx vitest run tests/int/flash-data.test.ts
 ```
 
-Expected: FAIL, `Failed to resolve import "@/lib/flash"`.
+Expected: FAIL, `Cannot find package '@/lib/flash'` (a modul még nem létezik).
 
 - [ ] **Step 4: `lib/flash.ts`**
 

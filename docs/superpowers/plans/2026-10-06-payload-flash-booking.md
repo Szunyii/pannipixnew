@@ -20,7 +20,7 @@
 - **Dev adatbázis:** fejlesztésben a Payload `push` módban szinkronizálja a sémát. Ha egy sémaváltozás után a dev szerver adatvesztésre figyelmeztetve kérdez a terminálban, a legegyszerűbb az újrakezdés: `rm -rf .data && npm run seed`.
 - **Commit üzenetek** végére mindig kerüljön oda: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Minden parancs a repó gyökeréből fut: `/Users/szunyoghdavid/Documents/pannipix`.
-- **Más projektek szerverei:** a gépen más projektek Next szerverei is futnak, az egyik a 3000-es porton. **Soha ne használj `pkill`-t vagy `killall`-t.** A saját szervert explicit porton indítsd (dev: `3210`, prod: `3211`), saját folyamatcsoportban (`set -m`), és a végén csak azt a csoportot állítsd le: `kill -TERM -- -"$PID"`.
+- **Más projektek szerverei:** a gépen más projektek Next szerverei is futnak, az egyik a 3000-es porton. **Soha ne használj `pkill`-t vagy `killall`-t.** A saját szervert explicit porton indítsd (dev: `3210`, prod: `3211`), saját folyamatcsoportban (`set -m`), és a végén csak azt a csoportot állítsd le: `kill -TERM -- -"$PID"`. A szerverindító blokkokat `bash -c '…'`-ban futtasd, mert a zsh nem interaktív módban nem engedi a `set -m`-et.
 
 ## Fájltérkép
 
@@ -497,7 +497,7 @@ curl -s -L -o /dev/null -w "admin %{http_code} %{url_effective}\n" http://localh
 kill -TERM -- -"$PID"
 ```
 
-Expected: `front 200`, majd `admin 200 http://localhost:3210/admin/create-first-user`. Ha bármelyik 500, nézd meg a `/tmp/pannipix-dev.log` fájlt.
+Expected: `front 200` és `admin 200`. A Payload a `create-first-user` oldalra kliensoldalon irányít át, ezért a curl a `/admin` URL-en marad, a böngésző viszont átkerül. Ha bármelyik 500, nézd meg a `/tmp/pannipix-dev.log` fájlt.
 
 - [ ] **Step 10: Lint, typecheck**
 

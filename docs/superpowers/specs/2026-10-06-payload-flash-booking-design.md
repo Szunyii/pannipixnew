@@ -86,7 +86,7 @@ Megjelenített név: `${category.name} #${number}`. A hátralévő alkalmak szá
 | Mező | Típus | Szabály |
 |---|---|---|
 | `startsAt` | date (nap + idő), Europe/Budapest | kötelező, egyedi |
-| `title` | text, automatikus, csak olvasható | pl. „2026. 10. 14. (kedd) 10:00”; ez látszik a kapcsolatválasztókban |
+| `title` | text, automatikus, csak olvasható | pl. „2026. 10. 14. (szerda) 10:00”; ez látszik a kapcsolatválasztókban |
 | állapot | számított (virtuális) | listaoszlop: *Szabad* / *Foglalt* |
 
 ### 4.4 Foglalások (`bookings`)
@@ -219,7 +219,7 @@ Natív `<dialog>` fókuszkezeléssel és Esc-re zárással. Mobilon teljes képe
 1. **Fejléc:** kép, név, ár, foglalhatóság („Egyszeri minta” / „Limitált · még 2 alkalom” / „Korlátlanul foglalható”). Alatta: *„A foglalás nem vásárlás: most nem fizetsz semmit, a részleteket a visszaigazolásban egyeztetjük.”*
 2. **Időpont:**
    - Megnyitáskor egy server action tölti be a jövőbeli szabad időpontokat.
-   - Napok szerint csoportosítva jelennek meg („okt. 14., kedd”), alattuk az időpontgombokkal („10:00”).
+   - Napok szerint csoportosítva jelennek meg („okt. 14., szerda”), alattuk az időpontgombokkal („10:00”).
    - A címkéket a szerver formázza Europe/Budapest szerint, így nincs hidratációs eltérés.
    - Üres állapot: „Most nincs szabad időpont. Írj Instagramon (@pannipix), és szólok, ha újakat nyitok.”
 3. **Adataid:** név, e-mail, telefon, testtáj, megjegyzés, 18+ jelölőnégyzet, rejtett csapdamező.

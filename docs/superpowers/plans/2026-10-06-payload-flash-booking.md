@@ -1627,7 +1627,8 @@ import { guardSlotDelete } from "../booking/guards";
 
 const setTitle: CollectionBeforeChangeHook<Slot> = ({ data, originalDoc }) => {
   const startsAt = data.startsAt ?? originalDoc?.startsAt;
-  if (startsAt) data.title = formatSlotTitle(startsAt);
+  // Collection hooks run before field validation: a bad date is left for the date field to reject (400, not 500).
+  if (startsAt && !Number.isNaN(Date.parse(startsAt))) data.title = formatSlotTitle(startsAt);
   return data;
 };
 
@@ -4949,11 +4950,15 @@ for (const p of placeholders) {
   designIds.set(p.number, design.id);
 }
 
-// Open slots: Tuesdays and Thursdays at 10:00 and 15:00 over the next three weeks.
+// Open slots: Tuesdays and Thursdays at 10:00 and 15:00 over the next three weeks. Calendar arithmetic
+// on Budapest's date, so a summer-time change can't skip or repeat a day.
+const today = dayKey(new Date());
 let opened = 0;
 for (let offset = 1; offset <= 21; offset += 1) {
-  const day = dayKey(new Date(Date.now() + offset * 86_400_000));
-  const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
+  const date = new Date(`${today}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  const day = date.toISOString().slice(0, 10);
+  const weekday = date.getUTCDay();
   if (weekday !== 2 && weekday !== 4) continue;
   for (const time of ["10:00", "15:00"]) {
     await payload.create({ collection: "slots", data: { startsAt: zonedTimeToUtc(day, time) } });
@@ -5134,7 +5139,7 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 
 ## Élesítés (Hostinger, Node.js alkalmazás)
 
-0. Node.js verzió: 22 (a hPanelben kiválasztva). Az oldal 20.9 felett is fut, a tesztekhez viszont legalább 22.12 kell.
+0. Node.js verzió: 22 (a hPanelben kiválasztva). Az oldal 20.9 felett is fut, a tesztekhez viszont legalább 22.12 kell. A magyar dátumokhoz teljes ICU kell; a hivatalos Node buildek ilyenek. Ellenőrzés: `node -p "new Intl.DateTimeFormat('hu-HU').resolvedOptions().locale"` → `hu-HU`.
 1. Környezeti változók: az `.env.example` összes kulcsa. A `DATABASE_URL` és a `MEDIA_DIR` a **deploy mappán kívüli**, írható könyvtárra mutasson, például:
    - `DATABASE_URL=file:/home/<felhasználó>/pannipix-data/pannipix.db`
    - `MEDIA_DIR=/home/<felhasználó>/pannipix-data/media`

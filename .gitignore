@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Payload local data (SQLite database + uploaded images)
+/.data/
+
+# the env template is committed, the real env files are not
+!.env.example

@@ -2187,7 +2187,10 @@ describe("booking rules", () => {
   it("keeps a design sold out when its collection's limit is lowered under the active bookings", async () => {
     const category = await createCategory(payload, "limited", 3);
     const design = await createDesign(payload, category.id);
-    for (let i = 0; i < 2; i += 1) await createBooking(payload, design.id, (await createSlot(payload)).id);
+    const bookings = [];
+    for (let i = 0; i < 3; i += 1) bookings.push(await createBooking(payload, design.id, (await createSlot(payload)).id));
+    // Seats 2 and 3 stay active, so a free seat (1) exists below the new limit: only the count may refuse.
+    await payload.update({ collection: "bookings", id: bookings[0].id, data: { status: "cancelled" } });
     await payload.update({ collection: "categories", id: category.id, data: { limit: 2 } });
     await expect(createBooking(payload, design.id, (await createSlot(payload)).id)).rejects.toMatchObject({
       code: "sold_out",
@@ -2618,7 +2621,7 @@ Expected: PASS (10 teszt). Ha a két egyidejűségi teszt valamelyike `unknown` 
 ```bash
 git add cms/booking/public.ts tests/unit/booking-errors.test.ts tests/int/public-booking.test.ts
 git commit -m "$(cat <<'EOF'
-feat: website bookings with one retry on a lost seat race
+feat: website bookings that retry a lost seat race
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF

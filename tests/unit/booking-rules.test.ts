@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACTIVE_STATUSES,
+  RELEASED_STATUSES,
+  STATUS_LABELS,
   availability,
   effectiveLimit,
   isActiveStatus,
   isReleasedStatus,
   lowestFreeSeat,
+  nextSeat,
   relationId,
 } from "@/lib/booking-rules";
 
@@ -17,6 +21,20 @@ describe("effectiveLimit", () => {
 
   it("falls back to 1 when a limited collection has no number", () => {
     expect(effectiveLimit({ rule: "limited", limit: null })).toBe(1);
+  });
+
+  it("rounds a fractional limit down and never goes below 1", () => {
+    expect(effectiveLimit({ rule: "limited", limit: 2.9 })).toBe(2);
+    expect(effectiveLimit({ rule: "limited", limit: 0 })).toBe(1);
+    expect(effectiveLimit({ rule: "limited", limit: -4 })).toBe(1);
+  });
+
+  it.each([NaN, Infinity])("fails closed on a limit of %s", (limit) => {
+    expect(effectiveLimit({ rule: "limited", limit })).toBe(1);
+  });
+
+  it("ignores the limit of a single collection", () => {
+    expect(effectiveLimit({ rule: "single", limit: 3 })).toBe(1);
   });
 });
 
@@ -46,6 +64,41 @@ describe("lowestFreeSeat", () => {
   it("returns null when every seat is taken", () => {
     expect(lowestFreeSeat([1, 2, 3], 3)).toBeNull();
   });
+
+  it("handles a design with a single seat", () => {
+    expect(lowestFreeSeat([], 1)).toBe(1);
+    expect(lowestFreeSeat([1], 1)).toBeNull();
+  });
+
+  it("finds the free seat at either end", () => {
+    expect(lowestFreeSeat([1, 2], 3)).toBe(3);
+    expect(lowestFreeSeat([2, 3], 3)).toBe(1);
+  });
+
+  it("ignores seats above the limit and repeated seats", () => {
+    expect(lowestFreeSeat([3, 4], 2)).toBe(1);
+    expect(lowestFreeSeat([3, 1, 1], 3)).toBe(2);
+  });
+
+  it("takes any iterable", () => {
+    expect(lowestFreeSeat(new Set([2, 1]), 3)).toBe(3);
+  });
+});
+
+describe("nextSeat", () => {
+  it("takes the lowest free seat while the design has room", () => {
+    expect(nextSeat([], 1)).toBe(1);
+    expect(nextSeat([1, 2], 3)).toBe(3);
+  });
+
+  it("is null when the limit was lowered under the active bookings", () => {
+    expect(nextSeat([1, 3], 2)).toBeNull();
+  });
+
+  it("counts bookings without a seat, made while the collection was unlimited", () => {
+    expect(nextSeat([null, null, 1], 3)).toBeNull();
+    expect(nextSeat([null, null], 3)).toBe(1);
+  });
 });
 
 describe("statuses", () => {
@@ -57,6 +110,15 @@ describe("statuses", () => {
   it("treats rejected and cancelled as released", () => {
     expect(["rejected", "cancelled"].every(isReleasedStatus)).toBe(true);
     expect(isReleasedStatus(undefined)).toBe(false);
+  });
+
+  it("does not treat a missing status as active", () => {
+    expect(isActiveStatus(undefined)).toBe(false);
+    expect(isActiveStatus(null)).toBe(false);
+  });
+
+  it("has an admin label for every status and for nothing else", () => {
+    expect(Object.keys(STATUS_LABELS).sort()).toEqual([...ACTIVE_STATUSES, ...RELEASED_STATUSES].sort());
   });
 });
 
@@ -71,5 +133,23 @@ describe("relationId", () => {
     expect(relationId(null)).toBeNull();
     expect(relationId("")).toBeNull();
     expect(relationId({})).toBeNull();
+  });
+
+  it("trims a numeric string and reads a string id inside a populated document", () => {
+    expect(relationId(" 7 ")).toBe(7);
+    expect(relationId({ id: "9" })).toBe(9);
+  });
+
+  it("rejects strings that are not plain digits", () => {
+    expect(relationId("abc")).toBeNull();
+    expect(relationId("7abc")).toBeNull();
+  });
+
+  it("returns null for a populated document without a usable id", () => {
+    expect(relationId({ id: null })).toBeNull();
+  });
+
+  it.each([0, -1, 1.5, NaN])("rejects %s, which is not a row id", (value) => {
+    expect(relationId(value)).toBeNull();
   });
 });

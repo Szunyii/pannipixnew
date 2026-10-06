@@ -38,7 +38,7 @@ export const Slots: CollectionConfig = {
   access: { read: isAdmin, create: isAdmin, update: isAdmin, delete: isAdmin },
   hooks: { beforeChange: [setTitle], beforeDelete: [guardSlotDelete] },
   fields: [
-    { name: "title", type: "text", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Időpont", admin: { hidden: true } },
     {
       name: "startsAt",
       type: "date",

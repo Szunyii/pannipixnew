@@ -29,6 +29,18 @@ describe("collections", () => {
     expect(slot.title).toBe("2026. 10. 14. (szerda) 10:00");
   });
 
+  it("renames a collection's designs with it", async () => {
+    const category = await createCategory(payload, "single");
+    const { id } = await createDesign(payload, category.id);
+    const before = await payload.findByID({ collection: "designs", id, depth: 0 });
+
+    await payload.update({ collection: "categories", id: category.id, data: { name: "Átnevezett" } });
+
+    const after = await payload.findByID({ collection: "designs", id, depth: 0 });
+    expect(after.title).toBe(`Átnevezett #${before.number}`);
+    expect(after.images).toEqual(before.images);
+  });
+
   it("asks for at least two bookings on a limited collection", async () => {
     await expect(
       payload.create({ collection: "categories", data: { name: "Hibás", rule: "limited", limit: 1 } }),

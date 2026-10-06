@@ -35,7 +35,7 @@ export const Designs: CollectionConfig = {
   indexes: [{ fields: ["category", "number"], unique: true }],
   hooks: { beforeChange: [setTitle], beforeDelete: [guardDesignDelete] },
   fields: [
-    { name: "title", type: "text", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Minta", admin: { hidden: true } },
     {
       type: "row",
       fields: [

@@ -20,7 +20,7 @@ export const Bookings: CollectionConfig = {
   // Together with the unique slot this keeps simultaneous requests from overbooking (SQLite allows many NULLs).
   indexes: [{ fields: ["design", "seat"], unique: true }],
   fields: [
-    { name: "title", type: "text", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Foglalás", admin: { hidden: true } },
     {
       type: "row",
       fields: [
@@ -83,7 +83,7 @@ export const Bookings: CollectionConfig = {
       label: "Elmúlt 18 éves",
       validate: (value) => value === true || "Csak 18 év feletti ügyfél foglalhat.",
     },
-    { name: "seat", type: "number", admin: { hidden: true } },
+    { name: "seat", type: "number", label: "Sorszám (belső)", admin: { hidden: true, disableListColumn: true } },
     { name: "designName", type: "text", label: "Minta (foglaláskor)", admin: { readOnly: true, position: "sidebar" } },
     {
       name: "slotStartsAt",

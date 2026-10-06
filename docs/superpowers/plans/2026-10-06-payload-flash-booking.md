@@ -1171,8 +1171,9 @@ EOF
 `tests/unit/booking-input.test.ts`:
 
 ```ts
+import { email as payloadEmail } from "payload/shared";
 import { describe, expect, it } from "vitest";
-import { parseBookingInput, placementLabel } from "@/lib/booking-input";
+import { PLACEMENTS, parseBookingInput, placementLabel } from "@/lib/booking-input";
 
 const valid = {
   designId: "12",
@@ -1185,6 +1186,8 @@ const valid = {
   adult: "on",
   website: "",
 };
+
+const PHONE_ERROR = "Adj meg egy érvényes telefonszámot (pl. +36 30 123 4567).";
 
 describe("parseBookingInput", () => {
   it("accepts a complete form and trims the text", () => {
@@ -1224,7 +1227,7 @@ describe("parseBookingInput", () => {
     if (result.ok) return;
     expect(result.fieldErrors).toEqual({
       email: "Adj meg egy érvényes e-mail-címet.",
-      phone: "Adj meg egy érvényes telefonszámot.",
+      phone: PHONE_ERROR,
       placement: "Válaszd ki a testtájat.",
       note: "A megjegyzés legfeljebb 1000 karakter lehet.",
     });
@@ -1240,7 +1243,7 @@ describe("parseBookingInput", () => {
     expect(result.ok && result.data.website).toBe("spam.example");
   });
 
-  it.each(["1e3", "0x10", "12.0", "99999999999999999999"])("rejects %j as a design or slot id", (id) => {
+  it.each(["0", "1e3", "0x10", "12.0", "99999999999999999999"])("rejects %j as a design or slot id", (id) => {
     const result = parseBookingInput({ ...valid, designId: id, slotId: id });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -1251,13 +1254,16 @@ describe("parseBookingInput", () => {
     const result = parseBookingInput({ ...valid, phone: "123\n456789" });
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.fieldErrors).toEqual({ phone: "Adj meg egy érvényes telefonszámot." });
+    expect(result.fieldErrors).toEqual({ phone: PHONE_ERROR });
   });
 
   it.each([
     ["line break", "Anna\nBcc: x"],
     ["tab", "Anna\tKiss"],
     ["delete character", "Anna\u007fKiss"],
+    ["next-line character", "Anna\u0085Kiss"],
+    ["line separator", "Anna\u2028Kiss"],
+    ["bidi override", "Anna\u202eKiss"],
   ])("rejects a %s in the name", (_kind, name) => {
     const result = parseBookingInput({ ...valid, name });
     expect(result.ok).toBe(false);
@@ -1268,6 +1274,100 @@ describe("parseBookingInput", () => {
   it("keeps line breaks in the note, which comes from a textarea", () => {
     const result = parseBookingInput({ ...valid, note: "Bal alkar\nkülső oldal" });
     expect(result.ok && result.data.note).toBe("Bal alkar\nkülső oldal");
+  });
+
+  it("counts a posted line break (CRLF) as one character, like the textarea's own maxLength does", () => {
+    const typed = `${"x".repeat(990)}${"\n".repeat(5)}${"y".repeat(5)}`; // exactly 1000 characters in the browser
+    const result = parseBookingInput({ ...valid, note: typed.replaceAll("\n", "\r\n") });
+    expect(result.ok && result.data.note).toBe(typed);
+  });
+});
+
+describe("parseBookingInput boundaries", () => {
+  const emailOfLength = (n: number) => `${"a".repeat(n - 5)}@b.co`;
+
+  it.each([
+    { label: "a name of 1 character", field: "name", value: "A", ok: false },
+    { label: "a name of 2 characters, accents included", field: "name", value: "Ád", ok: true },
+    { label: "a name of 100 characters", field: "name", value: "a".repeat(100), ok: true },
+    { label: "a name of 101 characters", field: "name", value: "a".repeat(101), ok: false },
+    { label: "an email of 254 characters", field: "email", value: emailOfLength(254), ok: true },
+    { label: "an email of 255 characters", field: "email", value: emailOfLength(255), ok: false },
+    { label: "an email without a dot after the @", field: "email", value: "anna@example", ok: false },
+    { label: "an email with a space", field: "email", value: "an na@example.com", ok: false },
+    { label: "a phone of 5 digits", field: "phone", value: "12345", ok: false },
+    { label: "a phone of 5 digits padded out with punctuation", field: "phone", value: "+(1)-2 3-4 5", ok: false },
+    { label: "a phone with letters", field: "phone", value: "123456abc", ok: false },
+    { label: "a phone of 20 characters", field: "phone", value: "12345678901234567890", ok: true },
+    { label: "a phone of 21 characters", field: "phone", value: "123456789012345678901", ok: false },
+    { label: "a phone with parentheses, plus and hyphen", field: "phone", value: "+(36) 30-123 4567", ok: true },
+    { label: "design id 0", field: "designId", value: "0", ok: false },
+    { label: "slot id 0", field: "slotId", value: "0", ok: false },
+  ])("$label", ({ field, value, ok }) => {
+    const result = parseBookingInput({ ...valid, [field]: value });
+    expect(result.ok).toBe(ok);
+    // Only the field under test may complain.
+    if (!ok && !result.ok) expect(Object.keys(result.fieldErrors)).toEqual([field]);
+  });
+});
+
+describe("phone numbers as people write and paste them", () => {
+  it.each([
+    { label: "the Hungarian slash notation", input: "06 30/123-4567", stored: "06 30/123-4567" },
+    { label: "dots", input: "06.30.123.4567", stored: "06.30.123.4567" },
+    { label: "no-break spaces from a copied number", input: "+36\u00a030\u00a0123\u00a04567", stored: "+36 30 123 4567" },
+    { label: "narrow no-break spaces", input: "+36\u202f30\u202f123\u202f4567", stored: "+36 30 123 4567" },
+    { label: "en dashes", input: "06\u201330\u2013123\u20134567", stored: "06-30-123-4567" },
+    { label: "runs of spaces", input: "+36   30 123  4567", stored: "+36 30 123 4567" },
+  ])("accepts $label and stores plain characters", ({ input, stored }) => {
+    const result = parseBookingInput({ ...valid, phone: input });
+    expect(result.ok && result.data.phone).toBe(stored);
+  });
+});
+
+describe("email", () => {
+  // The booking's email field is validated by Payload on create. Whatever this form lets through but Payload refuses
+  // shows up as an unspecific failure instead of a message under the field.
+  const payloadAccepts = (value: string) =>
+    payloadEmail(value, { required: true, req: { t: (key: string) => key, payload: { config: { collections: [] } } } } as never) === true;
+
+  it.each([
+    "anna@example.com",
+    "anna.kovacs+flash@gmail.com",
+    "ANNA@EXAMPLE.COM",
+    "a'b@example.com",
+    "anna@sub.example.co.uk",
+    "anna@example.c",
+    "anna@example.com.",
+    "a..b@example.com",
+    ".anna@example.com",
+    "anna@-example.com",
+    "anna@exa_mple.com",
+    "kovács.anna@gmail.com",
+    "anna@példa.hu",
+    "an,na@example.com",
+    "Anna<anna@example.com>",
+    "anna@1.2.3.4",
+  ])("gives %j the same verdict as Payload", (value) => {
+    const result = parseBookingInput({ ...valid, email: value });
+    const formAccepts = result.ok || !("email" in result.fieldErrors);
+    expect(formAccepts).toBe(payloadAccepts(value));
+  });
+});
+
+describe("placements", () => {
+  it("offers the eight body areas of the spec, and accepts every one of them", () => {
+    expect(PLACEMENTS).toEqual([
+      { value: "alkar", label: "Alkar" },
+      { value: "felkar", label: "Felkar" },
+      { value: "comb", label: "Comb" },
+      { value: "labszar", label: "Lábszár" },
+      { value: "hat", label: "Hát" },
+      { value: "oldal", label: "Oldal" },
+      { value: "gerinc", label: "Gerinc" },
+      { value: "mas", label: "Más testtáj" },
+    ]);
+    for (const { value } of PLACEMENTS) expect(parseBookingInput({ ...valid, placement: value }).ok).toBe(true);
   });
 });
 
@@ -1300,6 +1400,17 @@ describe("createRateLimiter", () => {
     expect(limiter.take("a")).toBe(false);
 
     now = 1001;
+    expect(limiter.take("a")).toBe(true);
+  });
+
+  it("counts an event for exactly one window", () => {
+    let now = 0;
+    const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: () => now });
+
+    limiter.take("a");
+    now = 999;
+    expect(limiter.take("a")).toBe(false);
+    now = 1000;
     expect(limiter.take("a")).toBe(true);
   });
 
@@ -1373,6 +1484,15 @@ export type FieldErrors = Partial<Record<BookingField, string>>;
 
 const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
+/** Pasted or autofilled numbers often carry no-break spaces and typographic dashes that look like the plain ones. */
+const phoneText = (value: unknown) =>
+  text(value)
+    .replace(/[^\S\r\n]+/g, " ")
+    .replace(/[\u2010-\u2015\u2212]/g, "-");
+
+/** Browsers post a textarea's line breaks as CRLF; count and keep them as one character, like the textarea's own maxLength. */
+const noteText = (value: unknown) => text(value).replace(/\r\n?/g, "\n");
+
 const positiveInt = (value: unknown) => {
   const raw = text(value);
   const n = /^\d+$/.test(raw) ? Number(raw) : NaN;
@@ -1380,6 +1500,16 @@ const positiveInt = (value: unknown) => {
 };
 
 const isPlacement = (value: string): value is Placement => PLACEMENTS.some((p) => p.value === value);
+
+/** Controls (CR, LF, tab, C1), line and paragraph separators and bidi overrides: a name is one plain line. */
+const NOT_IN_A_NAME = /[\p{Cc}\p{Zl}\p{Zp}\u202a-\u202e\u2066-\u2069]/u;
+
+/**
+ * The rule Payload applies to the booking's email field (payload 3.90.2, fields/validations). Anything laxer here
+ * passes the form and then fails inside payload.create, where the visitor only gets the generic error.
+ */
+const EMAIL =
+  /^(?!.*\.\.)[\w!#$%&'*+/=?^`{|}~-](?:[\w!#$%&'*+/=?^`{|}~.-]*[\w!#$%&'*+/=?^`{|}~-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/i;
 
 /** Checks the booking form on the server; the browser's own validation is only a convenience. */
 export function parseBookingInput(
@@ -1390,18 +1520,18 @@ export function parseBookingInput(
   const slotId = positiveInt(raw.slotId);
   const name = text(raw.name);
   const email = text(raw.email);
-  const phone = text(raw.phone);
+  const phone = phoneText(raw.phone);
   const placement = text(raw.placement);
-  const note = text(raw.note);
+  const note = noteText(raw.note);
 
   if (designId === null) errors.designId = "Hiányzik a minta.";
   if (slotId === null) errors.slotId = "Válassz időpontot.";
-  if (name.length < 2 || name.length > 100 || /[\u0000-\u001f\u007f]/.test(name)) errors.name = "Add meg a neved.";
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (name.length < 2 || name.length > 100 || NOT_IN_A_NAME.test(name)) errors.name = "Add meg a neved.";
+  if (email.length > 254 || !EMAIL.test(email)) {
     errors.email = "Adj meg egy érvényes e-mail-címet.";
   }
-  if (!/^[0-9+()\- ]{6,20}$/.test(phone) || phone.replace(/\D/g, "").length < 6) {
-    errors.phone = "Adj meg egy érvényes telefonszámot.";
+  if (!/^[0-9+()\-/. ]{6,20}$/.test(phone) || phone.replace(/\D/g, "").length < 6) {
+    errors.phone = "Adj meg egy érvényes telefonszámot (pl. +36 30 123 4567).";
   }
   if (!isPlacement(placement)) errors.placement = "Válaszd ki a testtájat.";
   if (note.length > 1000) errors.note = "A megjegyzés legfeljebb 1000 karakter lehet.";
@@ -1467,7 +1597,7 @@ export function createRateLimiter({
 npx vitest run tests/unit/booking-input.test.ts tests/unit/rate-limit.test.ts
 ```
 
-Expected: PASS (18 teszt).
+Expected: PASS (63 teszt).
 
 - [ ] **Step 6: Commit**
 

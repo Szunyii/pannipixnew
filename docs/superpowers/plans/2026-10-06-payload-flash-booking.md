@@ -519,6 +519,15 @@ EOF
 )"
 ```
 
+> **Az átnézés után (commit `10d41d6`):** a Task 2 kódja a fentiekhez képest így változott:
+> - A `cms/env.ts` `dataLocation()` függvénye élesben megköveteli a `DATABASE_URL`-t és a `MEDIA_DIR`-t. A build alatt nem követeli meg.
+> - A `Users` élesben `secure` sütit használ, a jelszó-visszaállító link pedig a `SITE_URL`-ből épül.
+> - A nodemailer timeoutokat kap, és a build alatt nem ellenőrzi az SMTP-t.
+> - `poweredByHeader: false`, és a Payload kliens-hint fejlécei csak a `/admin/*` alatt mennek ki.
+> - Új fájl lett az `app/fonts.ts` és az `app/global-not-found.tsx` (`experimental.globalNotFound`).
+>
+> A későbbi taskok ezekre a fájlokra csak hozzáfűzéssel hivatkoznak, így az utasításaik változatlanul érvényesek.
+
 ---
 
 ### Task 3: Tesztkörnyezet
@@ -2834,7 +2843,10 @@ const builders: Record<BookingEmailKind, (d: BookingEmailData) => EmailContent> 
   "customer-cancelled": customerCancelledEmail,
 };
 
-/** Sends the booking's emails. A failed send is logged and never undoes the booking. */
+/**
+ * Starts the booking's emails without waiting for them: a slow mail server must not hold up the
+ * visitor or the admin. A failed send is logged and never undoes the booking.
+ */
 export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
   doc,
   previousDoc,
@@ -2869,17 +2881,17 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
     const toAdmin = kind === "admin-new";
     if (toAdmin && !adminEmail) continue;
     const { subject, html, text } = builders[kind](data);
-    try {
-      await req.payload.sendEmail({
+    req.payload
+      .sendEmail({
         to: toAdmin ? adminEmail : doc.email,
         replyTo: toAdmin ? doc.email : adminEmail,
         subject,
         html,
         text,
+      })
+      .catch((err: unknown) => {
+        req.payload.logger.error({ err, msg: `Booking email "${kind}" for booking ${doc.id} failed` });
       });
-    } catch (err) {
-      req.payload.logger.error({ err, msg: `Booking email "${kind}" for booking ${doc.id} failed` });
-    }
   }
   return doc;
 };
@@ -4942,9 +4954,11 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
    - `DATABASE_URL=file:/home/<felhasználó>/pannipix-data/pannipix.db`
    - `MEDIA_DIR=/home/<felhasználó>/pannipix-data/media`
    A WAL mód miatt a könyvtárnak is írhatónak kell lennie (`-wal`, `-shm` fájlok).
-2. Build: `npm run build`, indítás: `npm start`. Induláskor a Payload lefuttatja a még nem futtatott migrációkat.
-3. Első indítás után: `/admin` → admin fiók → kollekciók, minták és időpontok felvétele.
-4. **Mentés:** a `pannipix-data` mappát (adatbázis + képek) rendszeresen menteni kell.
+   Élesben mindkettő kötelező. Ha bármelyik hiányzik, az admin és az API szándékosan 500-as hibát ad, hogy semmi ne kerülhessen a deploy mappába.
+2. Build: `npm run build`, indítás: `npm start`. Induláskor a Payload lefuttatja a még nem futtatott migrációkat. Ha a build memóriahiány miatt leáll: `NODE_OPTIONS=--max-old-space-size=4096 npm run build`.
+3. **HTTPS:** az admin bejelentkezéshez kell, mert a munkamenet-süti élesben csak HTTPS-en él. Kapcsold be az SSL-t a domainhez.
+4. Első indítás után: `/admin` → admin fiók → kollekciók, minták és időpontok felvétele.
+5. **Mentés:** a `pannipix-data` mappát (adatbázis + képek) rendszeresen menteni kell.
 
 Feltételezés: egyetlen Node processz fut. A foglalási korlát (IP-nként óránként 3) a memóriában számol.
 

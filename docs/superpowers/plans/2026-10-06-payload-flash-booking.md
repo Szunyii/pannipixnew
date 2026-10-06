@@ -1662,9 +1662,25 @@ export const guardSlotDelete = refuseWhileReferenced(
 - [ ] **Step 2: `cms/collections/Categories.ts`**
 
 ```ts
-import type { CollectionConfig } from "payload";
+import type { CollectionAfterChangeHook, CollectionConfig } from "payload";
+import type { Category } from "@/payload-types";
 import { anyone, isAdmin } from "../access";
 import { guardCategoryDelete } from "../booking/guards";
+
+/** Designs carry the collection's name ("P’CONs #027"); re-saving them after a rename lets their setTitle hook catch up. */
+const renameDesigns: CollectionAfterChangeHook<Category> = async ({ doc, operation, previousDoc, req }) => {
+  if (operation !== "update" || previousDoc.name === doc.name) return;
+  const { errors } = await req.payload.update({
+    collection: "designs",
+    where: { category: { equals: doc.id } },
+    data: {},
+    depth: 0,
+    overrideAccess: true,
+    req,
+  });
+  // A bulk update reports failed documents instead of throwing; the rename itself is already saved.
+  if (errors.length > 0) req.payload.logger.error({ errors, msg: "Some designs kept the collection's old name" });
+};
 
 export const Categories: CollectionConfig = {
   slug: "categories",
@@ -1677,7 +1693,7 @@ export const Categories: CollectionConfig = {
   },
   defaultSort: "order",
   access: { read: anyone, create: isAdmin, update: isAdmin, delete: isAdmin },
-  hooks: { beforeDelete: [guardCategoryDelete] },
+  hooks: { afterChange: [renameDesigns], beforeDelete: [guardCategoryDelete] },
   fields: [
     { name: "name", type: "text", required: true, unique: true, label: "Név" },
     {
@@ -1759,7 +1775,7 @@ export const Designs: CollectionConfig = {
   indexes: [{ fields: ["category", "number"], unique: true }],
   hooks: { beforeChange: [setTitle], beforeDelete: [guardDesignDelete] },
   fields: [
-    { name: "title", type: "text", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Minta", admin: { hidden: true } },
     {
       type: "row",
       fields: [
@@ -1893,7 +1909,7 @@ export const Slots: CollectionConfig = {
   access: { read: isAdmin, create: isAdmin, update: isAdmin, delete: isAdmin },
   hooks: { beforeChange: [setTitle], beforeDelete: [guardSlotDelete] },
   fields: [
-    { name: "title", type: "text", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Időpont", admin: { hidden: true } },
     {
       name: "startsAt",
       type: "date",
@@ -1953,7 +1969,7 @@ export const Bookings: CollectionConfig = {
   // Together with the unique slot this keeps simultaneous requests from overbooking (SQLite allows many NULLs).
   indexes: [{ fields: ["design", "seat"], unique: true }],
   fields: [
-    { name: "title", type: "text", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Foglalás", admin: { hidden: true } },
     {
       type: "row",
       fields: [
@@ -2016,7 +2032,7 @@ export const Bookings: CollectionConfig = {
       label: "Elmúlt 18 éves",
       validate: (value) => value === true || "Csak 18 év feletti ügyfél foglalhat.",
     },
-    { name: "seat", type: "number", admin: { hidden: true } },
+    { name: "seat", type: "number", label: "Sorszám (belső)", admin: { hidden: true, disableListColumn: true } },
     { name: "designName", type: "text", label: "Minta (foglaláskor)", admin: { readOnly: true, position: "sidebar" } },
     {
       name: "slotStartsAt",
@@ -2190,6 +2206,18 @@ describe("collections", () => {
     expect(slot.title).toBe("2026. 10. 14. (szerda) 10:00");
   });
 
+  it("renames a collection's designs with it", async () => {
+    const category = await createCategory(payload, "single");
+    const { id } = await createDesign(payload, category.id);
+    const before = await payload.findByID({ collection: "designs", id, depth: 0 });
+
+    await payload.update({ collection: "categories", id: category.id, data: { name: "Átnevezett" } });
+
+    const after = await payload.findByID({ collection: "designs", id, depth: 0 });
+    expect(after.title).toBe(`Átnevezett #${before.number}`);
+    expect(after.images).toEqual(before.images);
+  });
+
   it("asks for at least two bookings on a limited collection", async () => {
     await expect(
       payload.create({ collection: "categories", data: { name: "Hibás", rule: "limited", limit: 1 } }),
@@ -2238,7 +2266,7 @@ describe("collections", () => {
 npx vitest run tests/int/collections.test.ts
 ```
 
-Expected: PASS (5 teszt). Ha a séma push-a a `bookings` összetett indexén bukik el (`indexes` → `design`, `seat`), az index építésénél a relationship mező oszlopa (`design_id`) nem oldódott fel. Ilyenkor az `indexes` sor helyett a `payload.config.ts` `sqliteAdapter` hívásában add hozzá ugyanezt az indexet az `afterSchemaInit` hookkal (`uniqueIndex("bookings_design_seat_idx").on(table.design, table.seat)`, a `@payloadcms/db-sqlite/drizzle/sqlite-core`-ból), majd futtasd újra.
+Expected: PASS (6 teszt). Ha a séma push-a a `bookings` összetett indexén bukik el (`indexes` → `design`, `seat`), az index építésénél a relationship mező oszlopa (`design_id`) nem oldódott fel. Ilyenkor az `indexes` sor helyett a `payload.config.ts` `sqliteAdapter` hívásában add hozzá ugyanezt az indexet az `afterSchemaInit` hookkal (`uniqueIndex("bookings_design_seat_idx").on(table.design, table.seat)`, a `@payloadcms/db-sqlite/drizzle/sqlite-core`-ból), majd futtasd újra.
 
 - [ ] **Step 11: Lint, typecheck, teljes tesztkészlet**
 

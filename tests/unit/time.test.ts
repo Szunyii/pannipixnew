@@ -32,6 +32,13 @@ describe("zonedTimeToUtc", () => {
     expect(zonedTimeToUtc("2026-10-14", "10:00")).toBe(OCT_14_10_00);
     expect(zonedTimeToUtc("2026-11-03", "14:30")).toBe(NOV_03_14_30);
   });
+
+  it("reads times on the summer-time change days correctly", () => {
+    expect(zonedTimeToUtc("2026-03-29", "01:30")).toBe("2026-03-29T00:30:00.000Z"); // still winter time
+    expect(zonedTimeToUtc("2026-03-29", "03:30")).toBe("2026-03-29T01:30:00.000Z"); // summer time
+    expect(zonedTimeToUtc("2026-10-25", "01:30")).toBe("2026-10-24T23:30:00.000Z"); // still summer time
+    expect(zonedTimeToUtc("2026-10-25", "03:30")).toBe("2026-10-25T02:30:00.000Z"); // winter time
+  });
 });
 
 describe("groupSlotsByDay", () => {

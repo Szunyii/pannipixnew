@@ -33,13 +33,30 @@ export function formatSlotTitle(value: DateInput) {
   return `${numericDateFormat.format(date)} (${weekdayFormat.format(date)}) ${timeFormat.format(date)}`;
 }
 
+const offsetFormat = new Intl.DateTimeFormat("en-US", {
+  timeZone: TIME_ZONE,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  second: "numeric",
+});
+
+/** How far Budapest is ahead of UTC at an instant, in ms (1 or 2 hours). Built from formatted parts, so the machine's time zone never enters. */
+function offsetAt(ms: number) {
+  const p = Object.fromEntries(offsetFormat.formatToParts(ms).map((part) => [part.type, part.value]));
+  // The parts have whole-second resolution.
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(ms / 1000) * 1000;
+}
+
 /** Reads a wall-clock time ("2026-10-14", "10:00") as Budapest time and returns it as a UTC ISO string. */
 export function zonedTimeToUtc(day: string, time: string): string {
-  const asUtc = new Date(`${day}T${time}:00.000Z`);
-  // How far Budapest is ahead of UTC at that moment: 1 or 2 hours, depending on summer time.
-  const local = new Date(asUtc.toLocaleString("en-US", { timeZone: TIME_ZONE }));
-  const utc = new Date(asUtc.toLocaleString("en-US", { timeZone: "UTC" }));
-  return new Date(asUtc.getTime() - (local.getTime() - utc.getTime())).toISOString();
+  const asUtc = Date.parse(`${day}T${time}:00.000Z`);
+  // The first guess can lie across a summer-time change from asUtc, so read the offset again at the guess.
+  const guess = asUtc - offsetAt(asUtc);
+  return new Date(asUtc - offsetAt(guess)).toISOString();
 }
 
 export type OpenSlot = { id: number; startsAt: string; time: string; label: string };

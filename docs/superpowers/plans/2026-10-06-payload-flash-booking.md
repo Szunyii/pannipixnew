@@ -2026,7 +2026,15 @@ export const Bookings: CollectionConfig = {
     {
       type: "row",
       fields: [
-        { name: "design", type: "relationship", relationTo: "designs", required: true, label: "Minta" },
+        {
+          name: "design",
+          type: "relationship",
+          relationTo: "designs",
+          required: true,
+          label: "Minta",
+          // "Edit many" saves the bookings in parallel: moved onto one design together, they'd all pick the same seat.
+          admin: { disableBulkEdit: true },
+        },
         {
           name: "slot",
           type: "relationship",
@@ -2431,7 +2439,7 @@ describe("collections", () => {
     expect(await state(past.id)).toBe("Lejárt");
   });
 
-  it("keeps internal fields out of the admin's bulk edit", () => {
+  it("keeps internal fields and a booking's design out of the admin's bulk edit", () => {
     // "Edit many" skips fields that are unique, readOnly, disabled, top-level hidden or disableBulkEdit, but not admin.hidden.
     const field = (slug: "bookings" | "designs" | "slots", name: string) => {
       const found = payload.collections[slug].config.flattenedFields.find((f) => f.name === name);
@@ -2445,6 +2453,8 @@ describe("collections", () => {
       disableListColumn: true,
       disableListFilter: true,
     });
+    // A bulk edit saves its documents in parallel: bookings moved onto one design together would all pick the same seat.
+    expect(field("bookings", "design").admin).toMatchObject({ disableBulkEdit: true });
 
     // Payload adds the zone picker beside startsAt; the override relabels it and keeps it out of lists and bulk edit.
     const timezone = field("slots", "startsAt_tz") as SelectField;
@@ -2506,7 +2516,7 @@ EOF
 - [ ] **Step 1: `cms/booking/errors.ts`**
 
 ```ts
-import { ValidationError } from "payload";
+import { type PayloadRequest, ValidationError } from "payload";
 
 export type BookingErrorCode =
   | "design_unavailable"
@@ -2527,7 +2537,7 @@ export const BOOKING_MESSAGES: Record<BookingErrorCode, string> = {
   create_released: "Új foglalás csak Függőben, Jóváhagyva vagy Elkészült állapotban hozható létre.",
 };
 
-const FIELD: Record<BookingErrorCode, string> = {
+const FIELD = {
   design_unavailable: "design",
   sold_out: "design",
   slot_required: "slot",
@@ -2535,14 +2545,23 @@ const FIELD: Record<BookingErrorCode, string> = {
   slot_taken: "slot",
   reactivate: "status",
   create_released: "status",
+} as const satisfies Record<BookingErrorCode, string>;
+
+/** The Bookings field labels; the admin's error toast names the field with them. */
+const FIELD_LABEL: Record<(typeof FIELD)[BookingErrorCode], string> = {
+  design: "Minta",
+  slot: "Időpont",
+  status: "Állapot",
 };
 
 /** A booking rule failed. The admin shows the message under the field; the website maps the code. */
 export class BookingError extends ValidationError {
   readonly code: BookingErrorCode;
 
-  constructor(code: BookingErrorCode) {
-    super({ collection: "bookings", errors: [{ message: BOOKING_MESSAGES[code], path: FIELD[code] }] });
+  /** Pass `req.t`: without it Payload words the admin's toast in English. */
+  constructor(code: BookingErrorCode, t?: PayloadRequest["t"]) {
+    const path = FIELD[code];
+    super({ collection: "bookings", errors: [{ label: FIELD_LABEL[path], message: BOOKING_MESSAGES[code], path }] }, t);
     this.code = code;
     this.name = "BookingError";
   }
@@ -2573,6 +2592,7 @@ import {
   createCategory,
   createDesign,
   createSlot,
+  customer,
   getTestPayload,
   resetDatabase,
 } from "../helpers";
@@ -2605,6 +2625,35 @@ describe("booking rules", () => {
     expect((await createBooking(payload, design.id, first.id)).seat).toBe(1);
   });
 
+  it("explains a refusal in Hungarian, under the field it concerns", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "single")).id);
+    await createBooking(payload, design.id, (await createSlot(payload)).id);
+
+    const refusal = await createBooking(payload, design.id, (await createSlot(payload)).id).catch((err: unknown) => err);
+    expect(refusal).toMatchObject({
+      name: "BookingError",
+      code: "sold_out",
+      data: { errors: [{ path: "design", message: "Ez a minta már betelt." }] },
+    });
+    // The admin form shows this one as a toast.
+    expect((refusal as Error).message).toBe("A következő mező érvénytelen: Minta");
+  });
+
+  it("keeps the seat and the slot while the admin confirms and completes a booking on a full design", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "single")).id);
+    const slot = await createSlot(payload);
+    const { id } = await createBooking(payload, design.id, slot.id);
+
+    for (const status of ["confirmed", "completed"] as const) {
+      const updated = await payload.update({ collection: "bookings", id, data: { status }, depth: 0 });
+      expect(updated).toMatchObject({ status, seat: 1, slot: slot.id });
+    }
+    // The admin form sends the whole document back, unchanged fields included.
+    const doc = await payload.findByID({ collection: "bookings", id, depth: 0 });
+    const saved = await payload.update({ collection: "bookings", id, data: { ...doc, note: "x" }, depth: 0 });
+    expect(saved).toMatchObject({ status: "completed", seat: 1, slot: slot.id, note: "x" });
+  });
+
   it("books a limited design as many times as its collection allows", async () => {
     const design = await createDesign(payload, (await createCategory(payload, "limited", 2)).id);
     const seats = [];
@@ -2631,23 +2680,37 @@ describe("booking rules", () => {
     await expect(createBooking(payload, b.id, slot.id)).rejects.toMatchObject({ code: "slot_taken" });
   });
 
-  it("never brings a rejected or cancelled booking back", async () => {
+  it.each(["rejected", "cancelled"] as const)("never brings a %s booking back", async (status) => {
     const design = await createDesign(payload, (await createCategory(payload, "single")).id);
     const booking = await createBooking(payload, design.id, (await createSlot(payload)).id);
-    await payload.update({ collection: "bookings", id: booking.id, data: { status: "rejected" } });
+    await payload.update({ collection: "bookings", id: booking.id, data: { status } });
 
     await expect(
       payload.update({ collection: "bookings", id: booking.id, data: { status: "confirmed" } }),
     ).rejects.toMatchObject({ code: "reactivate" });
-    const cancelled = await payload.update({ collection: "bookings", id: booking.id, data: { status: "cancelled" } });
-    expect(cancelled.status).toBe("cancelled");
+    // Switching between the two released statuses is fine.
+    const other = status === "rejected" ? "cancelled" : "rejected";
+    expect((await payload.update({ collection: "bookings", id: booking.id, data: { status: other } })).status).toBe(other);
   });
 
-  it("does not create a booking that is already rejected", async () => {
+  it.each(["rejected", "cancelled"] as const)("does not create a booking that is already %s", async (status) => {
     const design = await createDesign(payload, (await createCategory(payload, "single")).id);
     await expect(
-      createBooking(payload, design.id, (await createSlot(payload)).id, { status: "rejected" }),
+      createBooking(payload, design.id, (await createSlot(payload)).id, { status }),
     ).rejects.toMatchObject({ code: "create_released" });
+  });
+
+  it("asks the admin for a slot", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "single")).id);
+    await expect(
+      payload.create({ collection: "bookings", data: { ...customer, design: design.id, status: "pending" } }),
+    ).rejects.toMatchObject({ code: "slot_required" });
+  });
+
+  it("refuses a design that doesn't exist", async () => {
+    await expect(createBooking(payload, 999_999, (await createSlot(payload)).id)).rejects.toMatchObject({
+      code: "design_unavailable",
+    });
   });
 
   it("moves a booking only to a free slot", async () => {
@@ -2773,21 +2836,23 @@ export const prepareBooking: CollectionBeforeChangeHook<Booking> = async ({
   if (isPublic && operation === "create") data.status = "pending";
   const status = data.status ?? previous?.status ?? "pending";
 
-  if (!previous && isReleasedStatus(status)) throw new BookingError("create_released");
-  if (previous && isReleasedStatus(previous.status) && isActiveStatus(status)) throw new BookingError("reactivate");
+  if (!previous && isReleasedStatus(status)) throw new BookingError("create_released", req.t);
+  if (previous && isReleasedStatus(previous.status) && isActiveStatus(status)) {
+    throw new BookingError("reactivate", req.t);
+  }
 
   if (isReleasedStatus(status)) {
     data.slot = null;
     data.seat = null;
   } else {
     const designId = relationId(data.design ?? previous?.design);
-    if (designId === null) throw new BookingError("design_unavailable");
+    if (designId === null) throw new BookingError("design_unavailable", req.t);
     if (!previous || relationId(previous.design) !== designId) {
       await takeSeat(designId, { data, isPublic, excludeId: previous?.id, req });
     }
 
     const slotId = relationId(data.slot === undefined ? previous?.slot : data.slot);
-    if (slotId === null) throw new BookingError("slot_required");
+    if (slotId === null) throw new BookingError("slot_required", req.t);
     if (!previous || relationId(previous.slot) !== slotId) {
       await takeSlot(slotId, { data, isPublic, excludeId: previous?.id, req });
     }
@@ -2802,12 +2867,13 @@ async function takeSeat(designId: number, { data, isPublic, excludeId, req }: Sc
   const design = await req.payload.findByID({
     collection: "designs",
     id: designId,
+    select: { category: true, number: true, price: true, visible: true },
     depth: 1,
     disableErrors: true,
     overrideAccess: true,
     req,
   });
-  if (!design || (isPublic && !design.visible)) throw new BookingError("design_unavailable");
+  if (!design || (isPublic && !design.visible)) throw new BookingError("design_unavailable", req.t);
   const category =
     typeof design.category === "object"
       ? design.category
@@ -2820,6 +2886,7 @@ async function takeSeat(designId: number, { data, isPublic, excludeId, req }: Sc
     // One read gives both the count and the free seat, so two requests that see the same state
     // pick the same seat and the unique index turns one of them away (see nextSeat).
     const conditions: Where[] = [{ design: { equals: designId } }, { status: { in: [...ACTIVE_STATUSES] } }];
+    // The booking never counts against itself, so a save that runs twice (a double submit) keeps its seat.
     if (excludeId) conditions.push({ id: { not_equals: excludeId } });
     const active = await req.payload.find({
       collection: "bookings",
@@ -2831,7 +2898,7 @@ async function takeSeat(designId: number, { data, isPublic, excludeId, req }: Sc
       req,
     });
     const seat = nextSeat(active.docs.map((b) => b.seat), limit);
-    if (seat === null) throw new BookingError("sold_out");
+    if (seat === null) throw new BookingError("sold_out", req.t);
     data.seat = seat;
   }
   data.designName = `${category.name} #${design.number}`;
@@ -2848,10 +2915,11 @@ async function takeSlot(slotId: number, { data, isPublic, excludeId, req }: Scop
     overrideAccess: true,
     req,
   });
-  if (!slot) throw new BookingError("slot_taken");
-  if (isPublic && new Date(slot.startsAt).getTime() <= Date.now()) throw new BookingError("slot_past");
+  if (!slot) throw new BookingError("slot_taken", req.t);
+  if (isPublic && new Date(slot.startsAt).getTime() <= Date.now()) throw new BookingError("slot_past", req.t);
 
   const conditions: Where[] = [{ slot: { equals: slotId } }];
+  // Likewise, a save that runs twice doesn't find its own slot taken.
   if (excludeId) conditions.push({ id: { not_equals: excludeId } });
   const { totalDocs } = await req.payload.count({
     collection: "bookings",
@@ -2859,7 +2927,7 @@ async function takeSlot(slotId: number, { data, isPublic, excludeId, req }: Scop
     overrideAccess: true,
     req,
   });
-  if (totalDocs > 0) throw new BookingError("slot_taken");
+  if (totalDocs > 0) throw new BookingError("slot_taken", req.t);
   data.slotStartsAt = slot.startsAt;
 }
 ```
@@ -2884,7 +2952,7 @@ Az `indexes` sor után:
 npx vitest run tests/int/bookings.test.ts
 ```
 
-Expected: PASS (12 teszt).
+Expected: PASS (18 teszt).
 
 - [ ] **Step 7: Lint, typecheck, teljes tesztkészlet**
 

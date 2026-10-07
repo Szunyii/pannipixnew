@@ -6794,6 +6794,7 @@ EOF
 **Files:**
 - Create: `migrations/*` (generált)
 - Modify: `payload.config.ts`
+- Test: `tests/int/migrations.test.ts`
 
 - [ ] **Step 1: A kezdő migráció generálása**
 
@@ -6815,12 +6816,124 @@ A `payload.config.ts` importjai közé:
 import { migrations } from "./migrations";
 ```
 
-A `sqliteAdapter({...})` hívásba a `busyTimeout: 5000,` után:
+A `sqliteAdapter({...})` hívásba a `busyTimeout: 5000,` után (az `isProductionRuntime` a `./cms/env`-ből már importálva van):
 
 ```ts
-    // On a long-running server (Hostinger) pending migrations run once, when Payload starts.
-    prodMigrations: migrations,
+    // In production, pending migrations run once per process, when Payload initialises: on the first request that uses
+    // it, not at `next start`. Never during `next build`: if a page ever started Payload at build time, the build would
+    // fail on a missing table instead of migrating whatever database the build machine points at.
+    prodMigrations: isProductionRuntime ? migrations : undefined,
 ```
+
+- [ ] **Step 2a: A generált `down` sorrendje**
+
+A generált `down` a táblákat létrehozási sorrendben dobja el. SQLite ellenőrzi a külső kulcsokat a `DROP TABLE`-nél, és a migrációk tranzakció nélkül futnak, ezért ez félúton elbukik, és félig törölt adatbázist hagy. Rendezd át úgy, hogy a gyerek táblák menjenek előbb: `payload_locked_documents_rels`, `payload_preferences_rels`, majd `bookings`, `slots`, `designs_images`, `designs`, `categories`, `media`, `users_sessions`, `users`, `payload_kv`, `payload_locked_documents`, `payload_preferences`, `payload_migrations`. A `down` elejére egysoros komment kerüljön az okáról. Mást ne módosíts a fájlban.
+
+- [ ] **Step 2b: A migrációk tesztje (`tests/int/migrations.test.ts`)**
+
+A tesztek és a fejlesztés push módban szinkronizálják a sémát, ezért egy elfelejtett `migrate:create` csak élesben derülne ki. Ez a teszt a migrációkat egy üres, memóriabeli adatbázisra futtatja, és táblánként összeveti a push által épített sémával; utána a `down`-ok fordított sorrendben mindent eltávolítanak.
+
+```ts
+// Guards what no other test can see. Tests and `next dev` build the database by pushing the collections' schema, but
+// production builds it from the committed migrations. This fails when
+//  - a collection changed and nobody ran `npm run payload migrate:create <name>`, so production would start on the old
+//    schema, or an index such as the unique booking slot went missing from the migration;
+//  - a `down` can't run: migrations run without a transaction, so a failed one leaves a half-dropped database.
+import type { MigrateUpArgs } from "@payloadcms/db-sqlite";
+import { drizzle } from "@payloadcms/db-sqlite/drizzle/libsql";
+import { createLocalReq } from "payload";
+import { describe, expect, it } from "vitest";
+import { migrations } from "@/migrations";
+import { getTestPayload } from "../helpers";
+
+type Db = MigrateUpArgs["db"];
+
+const emptyDatabase = (): Db => drizzle<Record<string, unknown>>(":memory:");
+
+async function query(db: Db, sql: string, ...args: string[]) {
+  const { columns, rows } = await db.$client.execute({ sql, args });
+  return rows.map((row) => Object.fromEntries(columns.map((name, i) => [name, row[i]])));
+}
+
+/**
+ * What is compared, per table: each column's name, type, NOT NULL, PK and default; each index's name, whether it is
+ * unique and its columns in order (plain and unique indexes alike); each foreign key's columns and its ON UPDATE and
+ * ON DELETE actions. SQLite's own tables are left out.
+ * Not compared: the order of the columns, and details only the CREATE statement shows (CHECK, COLLATE, AUTOINCREMENT,
+ * a partial index's WHERE). Payload's SQLite builder doesn't emit those; AUTOINCREMENT only with the adapter's
+ * `autoIncrement` option, which is off.
+ */
+async function describeSchema(db: Db) {
+  const tables = await query(
+    db,
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+  );
+  const schema: Record<string, unknown> = {};
+  for (const { name } of tables) {
+    const table = String(name);
+    schema[table] = {
+      columns: await query(
+        db,
+        'SELECT name, type, "notnull", pk, dflt_value FROM pragma_table_info(?) ORDER BY name',
+        table,
+      ),
+      indexes: await query(
+        db,
+        `SELECT il.name AS "index", il."unique", ii.seqno, ii.name AS "column"
+         FROM pragma_index_list(?) il, pragma_index_info(il.name) ii ORDER BY il.name, ii.seqno`,
+        table,
+      ),
+      foreignKeys: await query(
+        db,
+        'SELECT "from", "table", "to", on_update, on_delete FROM pragma_foreign_key_list(?) ORDER BY "from", "table"',
+        table,
+      ),
+    };
+  }
+  return schema;
+}
+
+/**
+ * Runs every migration in one direction (newest first when rolling back) on `db`, the way Payload does. The generated
+ * ones only use `db`; payload and req belong to the test database, so a data migration through them would not land here.
+ */
+async function run(db: Db, direction: "up" | "down") {
+  const payload = await getTestPayload();
+  const args = { db, payload, req: await createLocalReq({}, payload) };
+  for (const migration of direction === "up" ? migrations : [...migrations].reverse()) await migration[direction](args);
+}
+
+describe("migrations", () => {
+  it("build the schema the collections describe", async () => {
+    const db = emptyDatabase();
+    await run(db, "up");
+    const built = await describeSchema(db);
+    // The test database was pushed from the collections when Payload booted.
+    const wanted = await describeSchema((await getTestPayload()).db.drizzle);
+    // Table by table, so a failure names its table.
+    for (const table of new Set([...Object.keys(wanted), ...Object.keys(built)])) {
+      const message = [
+        `Table "${table}" differs between the collections and the migrations (- only in the collections, + only in the migrations).`,
+        "If a collection changed, run `npm run payload migrate:create <name>`",
+      ].join(" ");
+      expect.soft(built[table], message).toEqual(wanted[table]);
+    }
+  });
+
+  it("roll back in reverse order and leave nothing behind", async () => {
+    const db = emptyDatabase();
+    await run(db, "up");
+    await run(db, "down");
+    expect(await query(db, "SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")).toEqual([]);
+  });
+});
+```
+
+```bash
+npx vitest run tests/int/migrations.test.ts
+```
+
+Expected: PASS (2 teszt). Ha egy gyűjteménybe ideiglenesen felveszel egy mezőt migráció nélkül, az első teszt az adott tábla nevével bukik el.
 
 - [ ] **Step 3: Build**
 
@@ -6854,7 +6967,7 @@ Expected: `front 200`, `admin 200`. A táblák között szerepel a `bookings`, `
 
 ```bash
 npm test
-git add migrations payload.config.ts
+git add migrations payload.config.ts tests/int/migrations.test.ts
 git commit -m "$(cat <<'EOF'
 feat: initial migration, run on production start
 
@@ -6888,6 +7001,8 @@ Tetoválás-portfólió és flash minta időpontfoglalás. Next.js 16 + Payload 
 
 Az adatbázis és a feltöltött képek a `.data/` mappában vannak, ez nincs verziókezelve. Újrakezdés: `rm -rf .data && npm run seed`.
 
+A fejlesztői adatbázist a dev szerver és a seed séma-szinkronnal (push) kezeli. Az éles módot (`npm run build && npm start`) helyben külön adatbázissal próbáld, például `DATABASE_URL=file:./.data/prod-local.db MEDIA_DIR=./.data/prod-local-media npm start`: a fejlesztői adatbázison az éles indítás egy kérdésnél megállna (lásd *Biztonságos üzemeltetés*).
+
 SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára íródnak.
 
 ## Parancsok
@@ -6917,7 +7032,8 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
    - `MEDIA_DIR=/home/<felhasználó>/pannipix-data/media`
    A WAL mód miatt a könyvtárnak is írhatónak kell lennie (`-wal`, `-shm` fájlok).
    Élesben mindkettő kötelező. Ha bármelyik hiányzik, az admin és az API szándékosan 500-as hibát ad, hogy semmi ne kerülhessen a deploy mappába.
-2. Build: `npm run build`, indítás: `npm start`. Induláskor a Payload lefuttatja a még nem futtatott migrációkat. Ha a build memóriahiány miatt leáll: `NODE_OPTIONS=--max-old-space-size=4096 npm run build`.
+2. Build: `npm run build`, indítás: `npm start`. Ha a build memóriahiány miatt leáll: `NODE_OPTIONS=--max-old-space-size=4096 npm run build`.
+   A még nem futtatott migrációkat a Payload az indítás utáni **első kérésnél** futtatja le, nem magánál az `npm start`-nál. Ezért minden deploy után nyisd meg egyszer az oldalt (pl. `curl -fsS -m 30 https://<domain>/ -o /dev/null`), és nézd meg a naplóban a `Migrating:` / `Migrated:` sorokat (ha nincs ilyen, nem volt függő migráció), és hogy nincs-e `Error running migration`.
 3. **HTTPS:** az admin bejelentkezéshez kell, mert a munkamenet-süti élesben csak HTTPS-en él. Kapcsold be az SSL-t a domainhez.
 4. Első indítás után: `/admin` → admin fiók → kollekciók, minták és időpontok felvétele.
    Ezután próbáld ki élőben is:
@@ -6930,17 +7046,24 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
    Ha a 4. foglalás is átmegy, vagy a másik hálózatról sem lehet foglalni, állítsd át a `TRUSTED_PROXY_HOPS`-t: a Hostinger CDN bekapcsolásával 2. Ha sem 1-gyel, sem 2-vel nem utasítja el a 4. foglalást, a tárhely nem adja át a látogató címét. Ilyenkor a korlát nem működik, és csak a csapdamező véd; ha ez kevés, jöhet egy Cloudflare Turnstile.
 
    Ha már az első éles foglalás „Invalid Server Actions request” hibával bukik el, a proxy más hosztnevet ad át: a domaint fel kell venni az `experimental.serverActions.allowedOrigins` listába a `next.config.ts`-ben.
-5. **Mentés:** a `pannipix-data` mappát (adatbázis + képek) rendszeresen menteni kell.
+5. **Mentés:** a `pannipix-data` mappát (adatbázis + képek) rendszeresen menteni kell. Futó alkalmazás mellett az adatbázist így mentsd: `sqlite3 pannipix.db ".backup <mentés-fájl>"`. Ha fájlként másolod, előbb állítsd le az alkalmazást, és a `.db`, `-wal` és `-shm` fájlt együtt másold.
 6. **E-mail kézbesítés:** a feladó domainjéhez (pl. `pannipix.hu`) állítsd be a Hostingeren az SPF-et és a DKIM-et, lehetőleg a DMARC-ot is, különben a Gmail spamnek nézheti a leveleket. A sikertelen küldés csak a szerver naplójában látszik (hPanel → a Node.js alkalmazás naplója). Ha hiányzik egy e-mail beállítás, indításkor figyelmeztetés kerül a naplóba.
 
-Feltételezés: egyetlen Node processz fut. A foglalási korlát (IP-nként óránként 3) a memóriában számol.
+Feltételezés: egyetlen Node processz fut. A foglalási korlát (IP-nként óránként 3) a memóriában számol, és a migrációkat is egyetlen folyamat futtatja.
+
+## Biztonságos üzemeltetés
+
+- **Egy adatbázis, egy folyamat.** Deploy közben ne fusson egyszerre a régi és az új alkalmazás, és futó oldal mellett ne futtass kézzel `payload migrate`-et. A `npm run payload migrate:status` biztonságos, csak olvas.
+- **Az éles adatbázison soha ne futtasd az `npm run dev`-et vagy az `npm run seed`-et, és ne töltsd fel a helyi `.data/` adatbázist.** Ezek séma-szinkronnal írnak, és `dev` jelölést hagynak a `payload_migrations` táblában. Tünet: az oldal és az admin hibaüzenet nélkül nem tölt be (a képek és a statikus fájlok igen), a napló végén ez áll: „It looks like you've run Payload in dev mode… (y/N)”. Teendő: állítsd le az alkalmazást, és nézd meg: `sqlite3 pannipix.db "select name, batch from payload_migrations"`. Ha minden migráció szerepel a listában, töröld a `dev` sort (`delete from payload_migrations where batch = -1`), és indítsd újra. Ha csak a `dev` sor van, az adatbázist nem migráció hozta létre: állítsd vissza a mentést, vagy kezdd üres adatbázissal.
+- **Migráció élesítése előtt ments.** A migrációk tranzakció nélkül futnak. Egy félbeszakadt migráció után minden indítás az első kérésnél leáll (`table … already exists`). Ilyenkor állítsd le az alkalmazást, és állítsd vissza a mentést. A legelső élesítésnél elég törölni a három adatbázisfájlt (`.db`, `-wal`, `-shm`), és újraindítani.
+- **Próba éles adatokon.** Egy új migrációt élesítés előtt próbálj ki az éles adatbázis másolatán: `DATABASE_URL=file:/tmp/proba.db MEDIA_DIR=/tmp/proba-media npm run payload migrate`. A tesztek üres adatbázison futnak, az adatfüggő hibákat (pl. új kötelező mező meglévő sorokon) nem látják.
 
 ## Sémaváltozás
 
 1. Módosítsd a gyűjteményt a `cms/collections/` mappában.
 2. `npm run generate:types`
-3. `npm run payload migrate:create <rövid-név>`, majd nézd át a generált fájlt.
-4. Commit. Élesben a következő indításkor lefut.
+3. `npm run payload migrate:create <rövid-név>`, majd nézd át a generált fájlt, különösen a `down` törlési sorrendjét (előbb a gyerek táblák). Az `npm test` (`tests/int/migrations.test.ts`) addig hibát jelez, amíg a migráció hiányzik, vagy nem ugyanazt a sémát építi, mint a gyűjtemények.
+4. A `.ts`, a `.json` és az `index.ts` fájlt együtt commitold. Élesben a következő indítás utáni első kérésnél fut le. Élesben már lefutott migrációt ne szerkessz és ne nevezz át, a `.json` pillanatképeket pedig ne töröld.
 ````
 
 - [ ] **Step 2: Commit**

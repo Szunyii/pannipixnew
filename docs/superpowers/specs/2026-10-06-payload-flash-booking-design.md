@@ -34,7 +34,7 @@ A flash minták ma be vannak égetve a kódba (`components/data.ts`), és a fel�
 - **Képek:** `media` upload gyűjtemény, `staticDir = MEDIA_DIR`. A Payload szolgálja ki őket (`/api/media/file/...`), a `next/image` optimalizálja.
 - **E-mail:** `@payloadcms/email-nodemailer`, SMTP. Ha nincs beállítva SMTP (fejlesztés), a Payload a konzolra naplóz.
 - **Admin nyelve:** magyar (`@payloadcms/translations/languages/hu`), magyar gyűjtemény- és mezőcímkékkel. Időzóna: Europe/Budapest.
-- **Séma:** fejlesztésben `push` (automatikus szinkron). Élesben a `migrations/` mappába generált, commitolt migrációk futnak induláskor (`prodMigrations`).
+- **Séma:** fejlesztésben `push` (automatikus szinkron). Élesben a `migrations/` mappába generált, commitolt migrációk futnak (`prodMigrations`), folyamatonként egyszer, a Payload első használatakor (az indítás utáni első kérésnél); a `next build` alatt soha.
 
 Kódszervezés:
 
@@ -271,8 +271,8 @@ SMTP_PASS=
 - **Fejlesztés:** a `.data/` mappa gitignore-olt.
 - **Hostinger:** a `DATABASE_URL` és a `MEDIA_DIR` a deploy mappán kívüli, írható könyvtárra mutasson (pl. `/home/<user>/pannipix-data/`). A WAL mód miatt a könyvtárnak is írhatónak kell lennie, mert ott jönnek létre a `-wal` és `-shm` fájlok.
 - **Build:** a `next build` nem nyúl az adatbázishoz. A főoldal dinamikus, az admin és az API útvonalak eleve azok.
-- **Migrációk:** induláskor a Payload lefuttatja a még nem futtatott migrációkat. Sémaváltozás után `npm run payload migrate:create`, majd commit.
-- **Feltételezés:** a Hostingeren egy Node processz fut. A memóriabeli korlát és az induláskori migráció erre épít.
+- **Migrációk:** az indítás utáni első kérésnél a Payload lefuttatja a még nem futtatott migrációkat. Tranzakció nélkül futnak, ezért migráció élesítése előtt mentés kell. Sémaváltozás után `npm run payload migrate:create`, majd commit; a `tests/int/migrations.test.ts` elbukik, ha a migrációk sémája eltér a gyűjteményekétől, és ha egy `down` nem tud lefutni. Az éles adatbázison nem futhat `next dev` vagy seed: a push `dev` jelölést hagy, amitől az éles indítás egy interaktív kérdésnél megáll.
+- **Feltételezés:** a Hostingeren egy Node processz fut. A memóriabeli korlát és a migrációk futtatása erre épít.
 - **Mentés:** az SQLite fájlt és a média mappát rendszeresen menteni kell. A módja a README-be kerül.
 
 ## 12. Tesztelés

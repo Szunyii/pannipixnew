@@ -180,7 +180,7 @@ A levelek a Bookings `afterChange` hookjából mennek. Ha a küldés nem sikerü
 | Váltás `rejected`-re | ügyfél | rövid, udvarias elutasítás, link a mintákhoz |
 | Váltás `cancelled`-re | ügyfél | a lemondás visszaigazolása |
 
-A `completed` állapotra és az időpont-áthelyezésre nem megy e-mail. A sablonok egyszerű HTML-ek szöveges változattal, magyarul, a PANNIPIX hangvételében; az időpont Europe/Budapest szerint formázva.
+A `completed` állapotra és az időpont-áthelyezésre nem megy e-mail. Státuszjavításkor sem megy ismételt levél: a visszaigazolás csak függő állapotból, az elutasítás és a lemondás csak aktív állapotból indul. A levelek indítása nem várja meg a küldést. Ez egyetlen, folyamatosan futó Node folyamatot feltételez (`next start`, Hostinger); egy újraindításkor éppen küldés alatt álló levél elveszhet. Ha élesben hiányzik az `ADMIN_EMAIL`, a `SITE_URL` vagy az `SMTP_HOST`, indításkor figyelmeztetés kerül a naplóba. A sablonok egyszerű HTML-ek szöveges változattal, magyarul, a PANNIPIX hangvételében; az időpont Europe/Budapest szerint formázva.
 
 ## 8. Visszaélés elleni védelem (server action)
 
@@ -299,7 +299,7 @@ SMTP_PASS=
 
 ## 14. Pontosításra váró pontok
 
-- A fizetésről szóló mondat (9.3/1). Ha a fizetés máshogy működik (pl. foglalóval), igazítani kell.
+- A fizetésről szóló mondat (9.3/1). Ha a fizetés máshogy működik (pl. foglalóval), igazítani kell. A pontos mondat a `lib/copy.ts` `PAYMENT_NOTE` konstansa (e-mail és foglalási ablak). Változatai a GYIK-ben, a Folyamat lépéseiben és a Kiemelt rész „Hogyan működik?” blokkjában vannak.
 - A kollekciók valódi szabályai. A seed csak helyőrző értékeket tölt be.
 - Az SMTP fiók adatai és az admin értesítési címe (élesítéskor).
 

@@ -1265,6 +1265,10 @@ describe("parseBookingInput", () => {
     ["next-line character", "Anna\u0085Kiss"],
     ["line separator", "Anna\u2028Kiss"],
     ["bidi override", "Anna\u202eKiss"],
+    ["link", "Anna https://spam.example"],
+    ["web address", "www.spam.hu"],
+    ["capitalised link", "ANNA HTTP://SPAM.EXAMPLE"],
+    ["scheme without slashes", "Anna http:spam.example"],
   ])("rejects a %s in the name", (_kind, name) => {
     const result = parseBookingInput({ ...valid, name });
     expect(result.ok).toBe(false);
@@ -1290,6 +1294,7 @@ describe("parseBookingInput boundaries", () => {
   it.each([
     { label: "a name of 1 character", field: "name", value: "A", ok: false },
     { label: "a name of 2 characters, accents included", field: "name", value: "Ád", ok: true },
+    { label: "a name with a title, a dot and a hyphen", field: "name", value: "Dr. Szabó-Nagy Ágnes", ok: true },
     { label: "a name of 100 characters", field: "name", value: "a".repeat(100), ok: true },
     { label: "a name of 101 characters", field: "name", value: "a".repeat(101), ok: false },
     { label: "an email of 254 characters", field: "email", value: emailOfLength(254), ok: true },
@@ -1505,6 +1510,9 @@ const isPlacement = (value: string): value is Placement => PLACEMENTS.some((p) =
 /** Controls (CR, LF, tab, C1), line and paragraph separators and bidi overrides: a name is one plain line. */
 const NOT_IN_A_NAME = /[\p{Cc}\p{Zl}\p{Zp}\u202a-\u202e\u2066-\u2069]/u;
 
+/** The name goes into the emails and the form takes any address, so a link in it would be spam sent from our mailbox. */
+const LINK_LIKE = /:\/\/|www\.|https?:/i;
+
 /**
  * The rule Payload applies to the booking's email field (payload 3.90.2, fields/validations). Anything laxer here
  * passes the form and then fails inside payload.create, where the visitor only gets the generic error.
@@ -1527,7 +1535,9 @@ export function parseBookingInput(
 
   if (designId === null) errors.designId = "Hiányzik a minta.";
   if (slotId === null) errors.slotId = "Válassz időpontot.";
-  if (name.length < 2 || name.length > 100 || NOT_IN_A_NAME.test(name)) errors.name = "Add meg a neved.";
+  if (name.length < 2 || name.length > 100 || NOT_IN_A_NAME.test(name) || LINK_LIKE.test(name)) {
+    errors.name = "Add meg a neved.";
+  }
   if (email.length > 254 || !EMAIL.test(email)) {
     errors.email = "Adj meg egy érvényes e-mail-címet.";
   }
@@ -3374,12 +3384,15 @@ export function formatPrice(n: number) {
 import { describe, expect, it } from "vitest";
 import {
   type BookingEmailData,
+  type BookingEmailKind,
   adminNewBookingEmail,
   bookingEmailsFor,
   customerReceivedEmail,
   customerRejectedEmail,
   escapeHtml,
 } from "@/cms/emails/templates";
+import type { BookingStatus } from "@/lib/booking-rules";
+import { PAYMENT_NOTE } from "@/lib/copy";
 
 const data: BookingEmailData = {
   name: "Kovács Anna",
@@ -3408,6 +3421,12 @@ describe("templates", () => {
     expect(email.text).toContain("most nem fizetsz semmit");
   });
 
+  it("tells the customer, in the wording the site shares, that booking costs nothing now, and invites a reply", () => {
+    const { text, html } = customerReceivedEmail(data);
+    expect(text).toContain(`${PAYMENT_NOTE} Ha kérdésed van, válaszolj erre a levélre.`);
+    expect(html).toContain(PAYMENT_NOTE);
+  });
+
   it("gives the admin the customer's details with a link, and never raw HTML from the form", () => {
     const email = adminNewBookingEmail(data);
     expect(email.subject).toBe("Új foglalás: P’CONs #027 – 2026. október 14., szerda 10:00");
@@ -3419,6 +3438,24 @@ describe("templates", () => {
 
   it("links a rejected customer back to the designs", () => {
     expect(customerRejectedEmail(data).text).toContain("https://pannipix.test/#flash");
+  });
+
+  it.each(["\n", "\r\n"])("turns a line break (%j) in a note into <br> after escaping it, and keeps it in the text", (lineBreak) => {
+    const email = adminNewBookingEmail({ ...data, note: `Bal alkar${lineBreak}külső <oldal>` });
+    expect(email.html).toContain("Bal alkar<br>külső &lt;oldal&gt;");
+    expect(email.text).toContain(`Megjegyzés: Bal alkar${lineBreak}külső <oldal>`);
+  });
+
+  it("is a full HTML document that scales on a phone and keeps its look on the wrapper, not only on <body>", () => {
+    const { html } = customerRejectedEmail(data);
+    expect(html).toMatch(/<head>.*<meta charset="utf-8">.*<\/head>/);
+    expect(html).toContain('<meta name="viewport" content="width=device-width,initial-scale=1">');
+    const body = /<body style="([^"]*)"/.exec(html)?.[1] ?? "";
+    const wrapper = /<div style="([^"]*)"/.exec(html)?.[1] ?? "";
+    for (const declaration of ["background:#f7f7f5", "color:#121211", "font-family:Georgia", "font-size:16px", "line-height:1.6"]) {
+      expect(body).toContain(declaration);
+      expect(wrapper).toContain(declaration);
+    }
   });
 });
 
@@ -3436,14 +3473,39 @@ describe("bookingEmailsFor", () => {
     expect(bookingEmailsFor({ operation: "create", isPublic: false, status: "completed" })).toEqual([]);
   });
 
-  it("writes to the customer when the status changes to confirmed, rejected or cancelled", () => {
-    const change = (status: string, previousStatus = "pending") =>
-      bookingEmailsFor({ operation: "update", isPublic: false, status, previousStatus });
-    expect(change("confirmed")).toEqual(["customer-confirmed"]);
-    expect(change("rejected")).toEqual(["customer-rejected"]);
-    expect(change("cancelled", "confirmed")).toEqual(["customer-cancelled"]);
-    expect(change("completed", "confirmed")).toEqual([]);
-    expect(change("confirmed", "confirmed")).toEqual([]);
+  describe("on an update", () => {
+    // Status before, status after, emails sent. Only a decision on an open booking is news for the customer:
+    // completing a booking and correcting a status afterwards (completed to confirmed, rejected to cancelled) are not.
+    it.each<[BookingStatus, BookingStatus, BookingEmailKind[]]>([
+      ["pending", "confirmed", ["customer-confirmed"]],
+      ["pending", "rejected", ["customer-rejected"]],
+      ["pending", "cancelled", ["customer-cancelled"]],
+      ["confirmed", "cancelled", ["customer-cancelled"]],
+      ["confirmed", "rejected", ["customer-rejected"]],
+      ["pending", "completed", []],
+      ["confirmed", "completed", []],
+      ["completed", "confirmed", []],
+      ["rejected", "confirmed", []],
+      ["cancelled", "confirmed", []],
+      ["rejected", "cancelled", []],
+      ["cancelled", "rejected", []],
+    ])("%s to %s sends %j", (previousStatus, status, expected) => {
+      expect(bookingEmailsFor({ operation: "update", isPublic: false, status, previousStatus })).toEqual(expected);
+    });
+
+    it.each<BookingStatus>(["pending", "confirmed", "completed", "rejected", "cancelled"])(
+      "sends nothing while the status stays %s",
+      (status) => {
+        expect(bookingEmailsFor({ operation: "update", isPublic: false, status, previousStatus: status })).toEqual([]);
+      },
+    );
+
+    it("sends nothing when the previous status is unknown", () => {
+      for (const status of ["confirmed", "rejected", "cancelled"] as const) {
+        expect(bookingEmailsFor({ operation: "update", isPublic: false, status })).toEqual([]);
+        expect(bookingEmailsFor({ operation: "update", isPublic: false, status, previousStatus: null })).toEqual([]);
+      }
+    });
   });
 });
 ```
@@ -3468,7 +3530,8 @@ import {
 } from "../helpers";
 
 let payload: Payload;
-let sent: { to: string; subject: string }[];
+/** What the mail adapter was asked to send, as plain strings. */
+let sent: { to: string; replyTo?: string; subject: string; text: string; headers?: unknown }[];
 
 beforeAll(async () => {
   payload = await getTestPayload();
@@ -3478,7 +3541,13 @@ beforeEach(async () => {
   await resetDatabase(payload);
   sent = [];
   vi.spyOn(payload, "sendEmail").mockImplementation(async (message) => {
-    sent.push({ to: String(message.to), subject: String(message.subject) });
+    sent.push({
+      to: String(message.to),
+      replyTo: message.replyTo === undefined ? undefined : String(message.replyTo),
+      subject: String(message.subject),
+      text: String(message.text),
+      headers: message.headers,
+    });
   });
 });
 
@@ -3497,13 +3566,67 @@ async function onlyBookingId() {
   return docs[0].id;
 }
 
+/** Books a design on the website and returns the new booking's id. */
+async function bookOnTheWebsite() {
+  const d = await design();
+  const result = await createPublicBooking(payload, publicInput(d.id, (await createSlot(payload)).id));
+  expect(result.ok).toBe(true);
+  return onlyBookingId();
+}
+
+/** Runs `run` with an environment variable set (undefined removes it), then puts the variable back. */
+async function withEnv(name: string, value: string | undefined, run: () => Promise<void>) {
+  const original = process.env[name];
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+  try {
+    await run();
+  } finally {
+    if (original === undefined) delete process.env[name];
+    else process.env[name] = original;
+  }
+}
+
 describe("booking emails", () => {
   it("tell the admin and the customer about a website booking", async () => {
-    const d = await design();
-    await createPublicBooking(payload, publicInput(d.id, (await createSlot(payload)).id));
-    expect(sent.map((m) => m.to)).toEqual(["admin@example.com", "teszt.elek@example.com"]);
+    await bookOnTheWebsite();
+    expect(sent.map((m) => m.to)).toEqual(["admin@example.com", customer.email]);
     expect(sent[0].subject).toMatch(/^Új foglalás: /);
     expect(sent[1].subject).toMatch(/^Megkaptam a foglalásod/);
+  });
+
+  it.each(["https://pannipix.test", "https://pannipix.test/"])("send the admin a link to the booking when SITE_URL is %j", async (siteUrl) => {
+    await withEnv("SITE_URL", siteUrl, async () => {
+      const id = await bookOnTheWebsite();
+      const [toAdmin] = sent;
+      expect(toAdmin.to).toBe("admin@example.com");
+      expect(toAdmin.text).toContain(`https://pannipix.test/admin/collections/bookings/${id}`);
+      expect(toAdmin.text).not.toContain("//admin");
+    });
+  });
+
+  it("route a reply to the other side: the admin's email to the customer, the customer's to the admin", async () => {
+    await bookOnTheWebsite();
+    const [toAdmin, toCustomer] = sent;
+    expect(toAdmin.replyTo).toBe(customer.email);
+    expect(toCustomer.to).toBe(customer.email);
+    expect(toCustomer.replyTo).toBe("admin@example.com");
+  });
+
+  it("are marked as automatic, so out-of-office replies stay away", async () => {
+    await bookOnTheWebsite();
+    expect(sent).toHaveLength(2);
+    for (const email of sent) expect(email.headers).toEqual({ "Auto-Submitted": "auto-generated" });
+  });
+
+  it("send only the customer's email, and log why, when ADMIN_EMAIL is not set", async () => {
+    const warned = vi.spyOn(payload.logger, "warn").mockImplementation(() => undefined);
+    await withEnv("ADMIN_EMAIL", undefined, async () => {
+      await bookOnTheWebsite();
+      expect(sent.map((m) => m.to)).toEqual([customer.email]);
+      expect(sent[0].replyTo).toBeUndefined();
+      expect(warned).toHaveBeenCalledExactlyOnceWith("ADMIN_EMAIL is not set; the new-booking email was not sent.");
+    });
   });
 
   it("follow the status: confirmed, then cancelled", async () => {
@@ -3551,6 +3674,25 @@ describe("booking emails", () => {
       });
     } finally {
       process.off("unhandledRejection", onUnhandled);
+      payload.sendEmail = spied;
+    }
+  });
+
+  it("never hold a booking up while the mail server is slow", async () => {
+    // A plain function again, so a mock can't swallow what the hook does with the promise it gets.
+    let calls = 0;
+    const spied = payload.sendEmail;
+    payload.sendEmail = () => {
+      calls += 1;
+      return new Promise(() => {});
+    };
+    try {
+      const d = await design();
+      const result = await createPublicBooking(payload, publicInput(d.id, (await createSlot(payload)).id));
+
+      expect(result).toEqual({ ok: true, bookingId: expect.any(Number) });
+      expect(calls).toBe(2);
+    } finally {
       payload.sendEmail = spied;
     }
   });
@@ -3621,6 +3763,8 @@ Expected: FAIL, `Cannot find package '@/cms/emails/templates'` (a modul még nem
 - [ ] **Step 4: `cms/emails/templates.ts`**
 
 ```ts
+import { type BookingStatus, isActiveStatus } from "@/lib/booking-rules";
+import { PAYMENT_NOTE } from "@/lib/copy";
 import { formatPrice } from "@/lib/format";
 import { formatSlotFull } from "@/lib/time";
 
@@ -3649,6 +3793,12 @@ export function escapeHtml(value: string) {
   );
 }
 
+/** A value for an HTML table cell: escaped first, then its line breaks (a note comes from a textarea) become <br>. */
+const multiline = (value: string) => escapeHtml(value).replace(/\r?\n/g, "<br>");
+
+/** Set on <body> and again on the wrapper <div>: some mail clients drop the styles of <body>. */
+const BASE_STYLE = "background:#f7f7f5;color:#121211;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.6";
+
 const when = (d: BookingEmailData) => (d.slotStartsAt ? formatSlotFull(d.slotStartsAt) : "–");
 const price = (d: BookingEmailData) => (typeof d.price === "number" ? formatPrice(d.price) : "–");
 
@@ -3668,7 +3818,7 @@ function render(subject: string, blocks: Block[]): EmailContent {
         const rows = b.rows
           .map(
             ([k, v]) =>
-              `<tr><td style="padding:4px 16px 4px 0;color:#6e6d66;font-size:12px;letter-spacing:.16em;text-transform:uppercase;vertical-align:top">${escapeHtml(k)}</td><td style="padding:4px 0">${escapeHtml(v)}</td></tr>`,
+              `<tr><td style="padding:4px 16px 4px 0;color:#6e6d66;font-size:12px;letter-spacing:.16em;text-transform:uppercase;vertical-align:top">${escapeHtml(k)}</td><td style="padding:4px 0">${multiline(v)}</td></tr>`,
           )
           .join("");
         return `<table role="presentation" style="margin:0 0 20px;border-collapse:collapse">${rows}</table>`;
@@ -3677,7 +3827,7 @@ function render(subject: string, blocks: Block[]): EmailContent {
     })
     .join("");
 
-  const html = `<!doctype html><html lang="hu"><body style="margin:0;background:#f7f7f5;color:#121211;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.6"><div style="max-width:560px;margin:0 auto;padding:32px 24px"><p style="margin:0 0 28px;font-size:13px;letter-spacing:.3em">PANNIPIX</p>${body}</div></body></html>`;
+  const html = `<!doctype html><html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;${BASE_STYLE}"><div style="max-width:560px;margin:0 auto;padding:32px 24px;${BASE_STYLE}"><p style="margin:0 0 28px;font-size:13px;letter-spacing:.3em">PANNIPIX</p>${body}</div></body></html>`;
   return { subject, html, text };
 }
 
@@ -3697,9 +3847,7 @@ export function customerReceivedEmail(d: BookingEmailData): EmailContent {
     greeting(d),
     { p: "Megkaptam a foglalásodat. Hamarosan átnézem, és e-mailben visszaigazolom." },
     details(d),
-    {
-      p: "A foglalás nem vásárlás: most nem fizetsz semmit, a részleteket a visszaigazolásban egyeztetjük. Ha kérdésed van, válaszolj erre a levélre.",
-    },
+    { p: `${PAYMENT_NOTE} Ha kérdésed van, válaszolj erre a levélre.` },
     signature,
   ]);
 }
@@ -3759,7 +3907,11 @@ export type BookingEmailKind =
   | "customer-rejected"
   | "customer-cancelled";
 
-/** Which emails a booking change sends. Completing a booking or moving it to another slot sends none. */
+/**
+ * Which emails a booking change sends. The customer hears about a decision once: a confirmation when a pending booking
+ * is confirmed, a rejection or cancellation when an active booking is let go. Completing a booking, moving it to
+ * another slot and correcting a status afterwards (completed to confirmed, rejected to cancelled) send none.
+ */
 export function bookingEmailsFor({
   operation,
   isPublic,
@@ -3768,8 +3920,8 @@ export function bookingEmailsFor({
 }: {
   operation: "create" | "update";
   isPublic: boolean;
-  status: string;
-  previousStatus?: string | null;
+  status: BookingStatus;
+  previousStatus?: BookingStatus | null;
 }): BookingEmailKind[] {
   if (operation === "create") {
     const kinds: BookingEmailKind[] = isPublic ? ["admin-new"] : [];
@@ -3777,10 +3929,9 @@ export function bookingEmailsFor({
     if (status === "confirmed") kinds.push("customer-confirmed");
     return kinds;
   }
-  if (status === previousStatus) return [];
-  if (status === "confirmed") return ["customer-confirmed"];
-  if (status === "rejected") return ["customer-rejected"];
-  if (status === "cancelled") return ["customer-cancelled"];
+  if (status === "confirmed") return previousStatus === "pending" ? ["customer-confirmed"] : [];
+  if (status === "rejected" && isActiveStatus(previousStatus)) return ["customer-rejected"];
+  if (status === "cancelled" && isActiveStatus(previousStatus)) return ["customer-cancelled"];
   return [];
 }
 ```
@@ -3791,6 +3942,7 @@ export function bookingEmailsFor({
 import type { CollectionAfterChangeHook } from "payload";
 import { placementLabel } from "@/lib/booking-input";
 import type { Booking } from "@/payload-types";
+import { siteUrl } from "../env";
 import {
   type BookingEmailData,
   type BookingEmailKind,
@@ -3815,6 +3967,11 @@ const builders: Record<BookingEmailKind, (d: BookingEmailData) => EmailContent> 
  * Starts the booking's emails without waiting for them: a slow mail server must not hold up the
  * visitor or the admin. An email that fails to build, start or send is logged and skipped: it never
  * undoes the booking or keeps the other emails from going out.
+ *
+ * This assumes the site runs as one long-running Node process (`next start`, as on Hostinger): a send
+ * nobody waits for still finishes after the response has gone out. A send still in flight when the
+ * process restarts is lost, and no failure is logged for it. A host that freezes the function once it
+ * has responded would need these sends awaited.
  */
 export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
   doc,
@@ -3831,7 +3988,7 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
   });
   if (kinds.length === 0) return doc;
 
-  const siteUrl = (process.env.SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+  const site = siteUrl();
   const adminEmail = process.env.ADMIN_EMAIL;
   const data: BookingEmailData = {
     name: doc.name,
@@ -3842,13 +3999,17 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
     designName: doc.designName ?? "",
     slotStartsAt: doc.slotStartsAt,
     price: doc.price,
-    adminUrl: `${siteUrl}/admin/collections/bookings/${doc.id}`,
-    siteUrl,
+    adminUrl: `${site}/admin/collections/bookings/${doc.id}`,
+    siteUrl: site,
   };
 
   for (const kind of kinds) {
     const toAdmin = kind === "admin-new";
-    if (toAdmin && !adminEmail) continue;
+    if (toAdmin && !adminEmail) {
+      // The line names the setting to fix and nothing about the booking: no personal data in the log.
+      req.payload.logger.warn("ADMIN_EMAIL is not set; the new-booking email was not sent.");
+      continue;
+    }
     const failed = (err: unknown) => {
       req.payload.logger.error({ err, msg: `Booking email "${kind}" for booking ${doc.id} failed` });
     };
@@ -3861,6 +4022,8 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
           subject,
           html,
           text,
+          // Marks the mail as machine-sent, so out-of-office replies and other auto-responders leave it alone.
+          headers: { "Auto-Submitted": "auto-generated" },
         })
         .catch(failed);
     } catch (err) {
@@ -3913,6 +4076,14 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
 )"
 ```
+
+> **Az átnézés után (commit `b09b37d`):** a fenti blokkok a végleges kódot mutatják. Ezen felül:
+> - `lib/copy.ts`: `PAYMENT_NOTE`, a fizetésről szóló közös mondat. Az e-mail és a foglalási ablak (Task 13) is ezt használja.
+> - `cms/env.ts`: `siteUrl()` és az exportált `isProductionRuntime`. A `Users.ts` jelszó-visszaállító linkje is a `siteUrl()`-t használja.
+> - `payload.config.ts` `onInit`: élesben figyelmeztet, ha hiányzik az `ADMIN_EMAIL`, a `SITE_URL` vagy az `SMTP_HOST`.
+> - `lib/booking-input.ts`: link jellegű nevet nem fogad el.
+> - Új tesztek: `tests/unit/env.test.ts`, `tests/unit/users.test.ts`, `tests/int/startup-warning.test.ts`.
+> - A `bookingEmailsFor` státuszjavításnál nem küld ismételt levelet: visszaigazolást csak függőből, elutasítást és lemondást csak aktív állapotból.
 
 ---
 
@@ -5207,6 +5378,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { type BookFlashState, bookFlash, getOpenSlots } from "@/app/(frontend)/actions";
 import { PLACEMENTS } from "@/lib/booking-input";
+import { PAYMENT_NOTE } from "@/lib/copy";
 import type { OpenSlot, SlotDay } from "@/lib/time";
 import { type FlashDesign, availabilityLabel, designName, formatPrice } from "./data";
 import { Check, ChevronDown, ChevronLeft, Close } from "./icons";
@@ -5449,9 +5621,7 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
               )}
 
               <div className="mt-10 flex flex-col gap-5 border-t border-hairline pt-6 sm:flex-row sm:items-center sm:justify-between">
-                <p className="max-w-[22rem] text-[0.875rem] leading-snug text-muted">
-                  A foglalás nem vásárlás: most nem fizetsz semmit, a részleteket a visszaigazolásban egyeztetjük.
-                </p>
+                <p className="max-w-[22rem] text-[0.875rem] leading-snug text-muted">{PAYMENT_NOTE}</p>
                 <button
                   type="button"
                   disabled={!slot}
@@ -6248,6 +6418,7 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 
    Ha már az első éles foglalás „Invalid Server Actions request” hibával bukik el, a proxy más hosztnevet ad át: a domaint fel kell venni az `experimental.serverActions.allowedOrigins` listába a `next.config.ts`-ben.
 5. **Mentés:** a `pannipix-data` mappát (adatbázis + képek) rendszeresen menteni kell.
+6. **E-mail kézbesítés:** a feladó domainjéhez (pl. `pannipix.hu`) állítsd be a Hostingeren az SPF-et és a DKIM-et, lehetőleg a DMARC-ot is, különben a Gmail spamnek nézheti a leveleket. A sikertelen küldés csak a szerver naplójában látszik (hPanel → a Node.js alkalmazás naplója). Ha hiányzik egy e-mail beállítás, indításkor figyelmeztetés kerül a naplóba.
 
 Feltételezés: egyetlen Node processz fut. A foglalási korlát (IP-nként óránként 3) a memóriában számol.
 

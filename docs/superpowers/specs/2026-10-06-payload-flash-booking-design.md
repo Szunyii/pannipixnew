@@ -185,7 +185,7 @@ A `completed` állapotra és az időpont-áthelyezésre nem megy e-mail. Státus
 ## 8. Visszaélés elleni védelem (server action)
 
 - **Csapdamező (honeypot):** ha ki van töltve, a válasz „sikeres”, de foglalás nem jön létre.
-- **IP-alapú korlát, memóriában:** IP-nként óránként legfeljebb 3 létrejött foglalás. A Hostingeren egy Node processz fut; újrainduláskor a számláló nullázódik, ez elfogadott. A látogató címe az `X-Forwarded-For` jobbról `TRUSTED_PROXY_HOPS`-adik eleme (alapból 1). IPv6-nál a /64-es előtag számít. Ha nincs használható nyilvános cím, a korlát kimarad, nehogy minden látogató egy közös keretet kapjon.
+- **IP-alapú korlát, memóriában:** IP-nként óránként legfeljebb 3 létrejött foglalás. A Hostingeren egy Node processz fut; újrainduláskor a számláló nullázódik, ez elfogadott. A látogató címe az `X-Forwarded-For` jobbról `TRUSTED_PROXY_HOPS`-adik eleme (alapból 1). IPv6-nál a /64-es előtag számít. Ha nincs használható nyilvános cím, a korlát kimarad, nehogy minden látogató egy közös keretet kapjon; ilyenkor a napló egyszer figyelmeztet. Belső címnek számít a loopback, a privát tartományok, a link-local, az ULA és a CGNAT (100.64.0.0/10). A `TRUSTED_PROXY_HOPS` csak számjegyekből álló érték lehet; minden más 1-nek számít, és csak a kifejezett `0` kapcsolja ki a korlátot (erről is figyelmeztet a napló).
 - **Bemenet-ellenőrzés:**
   - név: 2–100 karakter
   - e-mail: érvényes formátum (ugyanaz a szabály, mint a Payload e-mail mezőjéé)
@@ -231,6 +231,8 @@ Natív `<dialog>` fókuszkezeléssel és Esc-re zárással. Mobilon teljes képe
    - Betelt minta: üzenet, a foglalás nem folytatható.
    - Mezőhiba: a mező alatt jelenik meg.
    - Túl sok kérés vagy ismeretlen hiba: általános üzenet és az Instagram elérhetőség.
+   - Ha a kérés el sem jut a szerverig (megszakadt kapcsolat), vagy a Payload nem indul el: ugyanez az általános üzenet, a kitöltött űrlap megmarad. Ha az oldal egy újratelepítés miatt elavult: „Az oldal közben frissült…” üzenet és újratöltés gomb.
+   - Végső védőhálóként az oldal saját, magyar hibaoldalt kap a Next alapértelmezett hibaképernyője helyett.
 
 ### 9.4 Szövegek
 

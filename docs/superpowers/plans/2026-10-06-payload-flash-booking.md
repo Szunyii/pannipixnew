@@ -3246,12 +3246,14 @@ describe("createPublicBooking", () => {
     expect(error).toHaveBeenCalledTimes(1);
   });
 
-  it("sends every attempt as a pending website booking", async () => {
+  it("sends every attempt as a pending website booking that loads no relations afterwards", async () => {
     const { payload, create } = fakePayload(seatConflict(), { id: 7 });
     await createPublicBooking(payload, input);
     for (const [args] of create.mock.calls) {
       expect(args).toMatchObject({
         collection: "bookings",
+        // The emails read the booking's own fields; loading the design and slot after the insert could only fail late.
+        depth: 0,
         context: { publicBooking: true },
         overrideAccess: true,
         data: { design: 12, slot: 4, status: "pending", note: null, adultConfirmed: true },
@@ -3319,6 +3321,9 @@ export async function createPublicBooking(payload: Payload, input: BookingInput)
         },
         context: { publicBooking: true },
         overrideAccess: true,
+        // The emails read only the booking's own fields. Populating the design and slot after the insert is extra work
+        // that could fail once the row is stored, and the visitor would then see an error for a booking that exists.
+        depth: 0,
       });
       return { ok: true, bookingId: booking.id };
     } catch (err) {
@@ -4183,6 +4188,17 @@ describe("getFlashCatalog", () => {
     expect(designs[1].images[0].src).toMatch(/^\/api\/media\/file\//);
   });
 
+  it("lists the collections by their order field, not by when they were created", async () => {
+    const first = await createCategory(payload, "single");
+    const second = await createCategory(payload, "unlimited");
+    // Created first, but moved behind the other one.
+    await payload.update({ collection: "categories", id: first.id, data: { order: (second.order ?? 0) + 1 } });
+
+    const { categories } = await getFlashCatalog();
+
+    expect(categories.map((c) => c.name)).toEqual([second.name, first.name]);
+  });
+
   it("frees a seat again once the booking is rejected", async () => {
     const design = await createDesign(payload, (await createCategory(payload, "single")).id);
     const booking = await createBooking(payload, design.id, (await createSlot(payload)).id);
@@ -4193,6 +4209,8 @@ describe("getFlashCatalog", () => {
 });
 
 describe("listOpenSlots", () => {
+  const openSlotIds = async () => (await listOpenSlots()).flatMap((day) => day.slots.map((slot) => slot.id));
+
   it("offers only future slots nobody holds, grouped by day", async () => {
     const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
     const free = await createSlot(payload);
@@ -4200,8 +4218,18 @@ describe("listOpenSlots", () => {
     await createSlot(payload, { past: true });
     await createBooking(payload, design.id, held.id);
 
-    const days = await listOpenSlots();
-    expect(days.flatMap((d) => d.slots.map((s) => s.id))).toEqual([free.id]);
+    expect(await openSlotIds()).toEqual([free.id]);
+  });
+
+  it("offers a slot again once the booking that held it is rejected", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+    const slot = await createSlot(payload);
+    const booking = await createBooking(payload, design.id, slot.id);
+    expect(await openSlotIds()).toEqual([]);
+
+    await payload.update({ collection: "bookings", id: booking.id, data: { status: "rejected" } });
+
+    expect(await openSlotIds()).toEqual([slot.id]);
   });
 });
 ```
@@ -4312,7 +4340,7 @@ export async function listOpenSlots(now = new Date()): Promise<SlotDay[]> {
 npx vitest run tests/int/flash-data.test.ts
 ```
 
-Expected: PASS (3 teszt).
+Expected: PASS (5 teszt).
 
 - [ ] **Step 6: A látogató címe: a bukó teszt (`tests/unit/client-address.test.ts`)**
 
@@ -4349,9 +4377,22 @@ describe("clientAddress", () => {
     ["a private address", "10.1.2.3"],
     ["another private range", "172.20.0.5"],
     ["a unique-local IPv6 address", "fd00::1"],
+    ["a carrier-grade NAT address, where a host's own proxies may sit", "100.64.1.2"],
+    ["the first address of the carrier-grade NAT range", "100.64.0.0"],
+    ["the last address of the carrier-grade NAT range", "100.127.255.255"],
+    ["one near the end of the carrier-grade NAT range", "100.127.255.254"],
+    ["one in the middle of the carrier-grade NAT range", "100.100.100.100"],
+    ["an IPv4-mapped carrier-grade NAT address", "::ffff:100.64.1.2"],
   ])("has no address for %s", (_what, header) => {
     expect(clientAddress(header)).toBeNull();
   });
+
+  it.each(["100.63.0.1", "100.128.0.1", "100.0.0.1", "100.200.1.1"])(
+    "keeps %s, which lies outside the carrier-grade NAT range",
+    (address) => {
+      expect(clientAddress(address)).toBe(address);
+    },
+  );
 
   it("reads an IPv4-mapped address as the IPv4 one", () => {
     expect(clientAddress("::ffff:203.0.113.9")).toBe("203.0.113.9");
@@ -4382,8 +4423,12 @@ Expected: FAIL, `Cannot find package '@/lib/client-address'` (a modul még nem l
 ```ts
 import { isIP } from "node:net";
 
-/** Loopback, private, link-local and unspecified addresses: a hop inside the host's own network, not a visitor. */
-const INTERNAL = /^(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|0\.|::1?$|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i;
+/**
+ * Loopback, private, carrier-grade NAT (100.64.0.0/10), link-local and unspecified addresses: a hop inside the host's
+ * own network, not a visitor.
+ */
+const INTERNAL =
+  /^(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|169\.254\.|0\.|::1?$|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i;
 
 /** An IPv6 visitor can pick any address in their /64, so that prefix is what identifies them. */
 function ipv6Prefix(ip: string) {
@@ -4413,7 +4458,7 @@ export function clientAddress(forwardedFor: string | null, hops = 1): string | n
 npx vitest run tests/unit/client-address.test.ts
 ```
 
-Expected: PASS (16 teszt).
+Expected: PASS (26 teszt).
 
 - [ ] **Step 8: `.env.example`: a proxy-hopok száma**
 
@@ -4423,7 +4468,8 @@ A fájl végére:
 
 # Proxies in front of the app that append to X-Forwarded-For. Assumed: 1 for Hostinger's own, 2 with its CDN
 # switched on; confirm with the README's live checks. The booking limit (3 per visitor per hour) keys on the
-# address that many entries from the right; 0 turns it off, anything else non-numeric means 1.
+# address that many entries from the right. Only an explicit 0 turns it off; anything that is not a plain whole
+# number (-1, 2abc, empty) means 1, so a typo can't switch the limit off.
 TRUSTED_PROXY_HOPS=1
 ```
 
@@ -4432,7 +4478,7 @@ TRUSTED_PROXY_HOPS=1
 A Payloadot, a fejléceket és a foglalás létrehozását mockolja; a korlátozó, a címkezelés és az űrlap-ellenőrzés valódi. Minden teszt friss modulpéldányt tölt be (`vi.resetModules`), így a korlátozó állapota nem szivárog át.
 
 ```ts
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   xff: null as string | null,
@@ -4474,8 +4520,7 @@ const valid = () => {
 
 async function load(hops?: string) {
   vi.resetModules();
-  if (hops === undefined) delete process.env.TRUSTED_PROXY_HOPS;
-  else process.env.TRUSTED_PROXY_HOPS = hops;
+  vi.stubEnv("TRUSTED_PROXY_HOPS", hops);
   return (await import("@/app/(frontend)/actions")).bookFlash;
 }
 
@@ -4485,6 +4530,14 @@ beforeEach(() => {
   h.warn.mockReset();
   h.create.mockReset().mockResolvedValue({ ok: true, bookingId: 1 });
   h.getPayload.mockReset().mockResolvedValue({ logger: { warn: h.warn, error: vi.fn() } });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  // tests/setup.ts stubs NODE_ENV too, and unstubAllEnvs took that stub away with the rest.
+  vi.stubEnv("NODE_ENV", "test");
 });
 
 describe("bookFlash", () => {
@@ -4498,6 +4551,22 @@ describe("bookFlash", () => {
     expect(results.map((r) => r.status)).toEqual(["success", "success", "success", "error"]);
     expect(results[3]).toEqual({ status: "error", code: "rate_limited" });
     expect(h.create).toHaveBeenCalledTimes(3);
+    // Everything works as set up: nothing to warn about.
+    expect(h.warn).not.toHaveBeenCalled();
+  });
+
+  it("keeps counting a booking for an hour: still refused after 59 minutes, allowed again after 61", async () => {
+    // Only the clock is faked, and before load(): the limiter reads the clock it finds when the module starts.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const bookFlash = await load();
+    h.xff = "203.0.113.9";
+    for (let i = 0; i < 3; i += 1) expect(await bookFlash(valid())).toEqual({ status: "success" });
+
+    vi.advanceTimersByTime(59 * 60_000);
+    expect(await bookFlash(valid())).toEqual({ status: "error", code: "rate_limited" });
+
+    vi.advanceTimersByTime(2 * 60_000);
+    expect(await bookFlash(valid())).toEqual({ status: "success" });
   });
 
   it("keeps visitors apart", async () => {
@@ -4540,13 +4609,32 @@ describe("bookFlash", () => {
     for (let i = 0; i < 3; i += 1) expect(await bookFlash(valid())).toEqual({ status: "success" });
   });
 
-  it("does not use up the limit when Payload fails to start", async () => {
+  it("returns an error value instead of throwing when Payload fails to start, and does not use up the limit", async () => {
     const bookFlash = await load();
     h.xff = "203.0.113.9";
-    h.getPayload.mockRejectedValue(new Error("db down"));
-    for (let i = 0; i < 5; i += 1) await expect(bookFlash(valid())).rejects.toThrow("db down");
+    // Payload has no logger yet, so the action writes to the console.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const cause = new Error("db down");
+    h.getPayload.mockRejectedValue(cause);
+    for (let i = 0; i < 5; i += 1) expect(await bookFlash(valid())).toEqual({ status: "error", code: "unknown" });
+    expect(logged).toHaveBeenCalledTimes(5);
+    expect(logged.mock.calls[0]).toContain(cause);
+    expect(JSON.stringify(logged.mock.calls)).not.toMatch(/203\.0\.113|anna|example\.com|\+36/i);
     h.getPayload.mockResolvedValue({ logger: { warn: h.warn, error: vi.fn() } });
     for (let i = 0; i < 3; i += 1) expect(await bookFlash(valid())).toEqual({ status: "success" });
+  });
+
+  it.each([
+    ["nothing", undefined],
+    ["null", null],
+    ["a string", "designId=12&slotId=4"],
+    ["a plain object", { designId: "12", slotId: "4" }],
+    ["a list of pairs", [["designId", "12"], ["slotId", "4"]]],
+  ])("answers %s instead of a form with 'invalid', and does not touch Payload", async (_what, argument) => {
+    const bookFlash = await load();
+    // A Server Function can be called with anything, whatever its type says.
+    expect(await bookFlash(argument as unknown as FormData)).toEqual({ status: "error", code: "invalid", fieldErrors: {} });
+    expect(h.order).toEqual([]);
   });
 
   it("reads Payload before it takes a slot, and rejects invalid input before touching Payload", async () => {
@@ -4570,17 +4658,56 @@ describe("bookFlash", () => {
     }
   });
 
-  it("TRUSTED_PROXY_HOPS=0 switches the limit off", async () => {
+  it("TRUSTED_PROXY_HOPS=0 switches the limit off, and says so once", async () => {
     const bookFlash = await load("0");
     h.xff = "6.6.6.6, 203.0.113.9";
     for (let i = 0; i < 6; i += 1) expect(await bookFlash(valid())).toEqual({ status: "success" });
+    expect(h.warn).toHaveBeenCalledTimes(1);
+    expect(h.warn.mock.calls[0]).toEqual(["Booking limit is off: TRUSTED_PROXY_HOPS is 0 (see .env.example)."]);
+    expect(JSON.stringify(h.warn.mock.calls)).not.toMatch(/6\.6\.6\.6|203\.0\.113|anna|example\.com/i);
   });
 
-  it.each([[""], ["abc"]])("TRUSTED_PROXY_HOPS=%j falls back to one hop", async (value) => {
+  // Only an explicit 0 may switch the limit off, so every typo must mean the default. The first entry differs on
+  // every request, like a visitor's spoofed header: a typo read as 2 would key on it and never refuse anyone.
+  it.each([[""], ["abc"], ["-1"], ["0x2"], ["2abc"]])("TRUSTED_PROXY_HOPS=%j falls back to one hop", async (value) => {
     const bookFlash = await load(value);
-    h.xff = "6.6.6.6, 203.0.113.9";
-    for (let i = 0; i < 3; i += 1) await bookFlash(valid());
-    expect(await bookFlash(valid())).toEqual({ status: "error", code: "rate_limited" });
+    const results = [];
+    for (const spoof of ["1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"]) {
+      h.xff = `${spoof}, 203.0.113.9`;
+      results.push(await bookFlash(valid()));
+    }
+    expect(results).toEqual([
+      { status: "success" },
+      { status: "success" },
+      { status: "success" },
+      { status: "error", code: "rate_limited" },
+    ]);
+    expect(h.warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a private hop", "10.0.0.7"],
+    ["the socket address Next fills in when the proxy sent nothing", "::ffff:127.0.0.1"],
+    ["no forwarded header at all", null],
+  ])("warns once, without any address, when there is no usable visitor address: %s", async (_what, xff) => {
+    const bookFlash = await load();
+    h.xff = xff;
+    for (let i = 0; i < 4; i += 1) expect(await bookFlash(valid())).toEqual({ status: "success" });
+    expect(h.warn.mock.calls).toEqual([
+      ["Booking limit skipped: no usable visitor address in X-Forwarded-For; check TRUSTED_PROXY_HOPS (see README)."],
+    ]);
+    expect(JSON.stringify(h.warn.mock.calls)).not.toMatch(/10\.0\.0\.7|127\.0\.0\.1|anna|example\.com/i);
+  });
+
+  it("warns when the first request without a usable address comes, however many good ones came before it", async () => {
+    const bookFlash = await load();
+    h.xff = "203.0.113.9";
+    await bookFlash(valid());
+    expect(h.warn).not.toHaveBeenCalled();
+    h.xff = "10.0.0.7";
+    await bookFlash(valid());
+    await bookFlash(valid());
+    expect(h.warn).toHaveBeenCalledTimes(1);
   });
 });
 ```
@@ -4598,7 +4725,7 @@ Expected: FAIL, az `@/app/(frontend)/actions` modul még nem létezik.
 
 import config from "@payload-config";
 import { headers } from "next/headers";
-import { getPayload } from "payload";
+import { type Payload, getPayload } from "payload";
 import type { PublicBookingCode } from "@/cms/booking/errors";
 import { createPublicBooking } from "@/cms/booking/public";
 import { type FieldErrors, parseBookingInput } from "@/lib/booking-input";
@@ -4614,28 +4741,59 @@ export type BookFlashState =
 
 // At most three bookings an hour from one visitor, so nobody can lock up the whole calendar.
 const limiter = createRateLimiter({ limit: 3, windowMs: 60 * 60 * 1000 });
-// Proxies in front of the app that append to X-Forwarded-For (see .env.example); 0 turns the limit off.
-const hopsSetting = Number.parseInt(process.env.TRUSTED_PROXY_HOPS ?? "", 10);
-const trustedProxyHops = Number.isInteger(hopsSetting) ? hopsSetting : 1;
+
+// Proxies in front of the app that append to X-Forwarded-For (see .env.example). Only an explicit 0 turns the limit
+// off: anything else that isn't plain digits ("-1", "0x2", "2abc", "") is a typo, and a typo must not do that.
+const hopsSetting = process.env.TRUSTED_PROXY_HOPS ?? "";
+const trustedProxyHops = /^\d+$/.test(hopsSetting) ? Number(hopsSetting) : 1;
+
+// Neither line may carry an address or anything else about a visitor.
+const LIMIT_OFF = "Booking limit is off: TRUSTED_PROXY_HOPS is 0 (see .env.example).";
+const NO_ADDRESS =
+  "Booking limit skipped: no usable visitor address in X-Forwarded-For; check TRUSTED_PROXY_HOPS (see README).";
+
+const warned = new Set<string>();
+
+/** Warns the first time only. The setting stays the same for the life of the process, so a line per booking would just bury it. */
+function warnOnce(payload: Payload, message: string) {
+  if (warned.has(message)) return;
+  warned.add(message);
+  payload.logger.warn(message);
+}
 
 export async function getOpenSlots(): Promise<SlotDay[]> {
   return listOpenSlots();
 }
 
 export async function bookFlash(formData: FormData): Promise<BookFlashState> {
+  // A Server Function is an endpoint anyone can call with any argument, whatever its type says.
+  if (!(formData instanceof FormData)) return { status: "error", code: "invalid", fieldErrors: {} };
   const parsed = parseBookingInput(Object.fromEntries(formData));
   if (!parsed.ok) return { status: "error", code: "invalid", fieldErrors: parsed.fieldErrors };
 
-  const payload = await getPayload({ config });
+  let payload: Payload;
+  try {
+    payload = await getPayload({ config });
+  } catch (err) {
+    // A failure is a value for the form to show, not a throw. Payload has no logger yet, so it goes to the console;
+    // nothing from the form has reached Payload, so the log holds no personal data.
+    console.error("Booking form: Payload failed to start.", err);
+    return { status: "error", code: "unknown" };
+  }
   // Bots fill the hidden field: tell them it worked and store nothing.
   if (parsed.data.website) {
     payload.logger.warn("Booking form honeypot filled in; nothing stored.");
     return { status: "success" };
   }
 
-  // No usable visitor address (e.g. an unexpected proxy setup): skip the limit rather than share one bucket.
+  // No usable visitor address (e.g. an unexpected proxy setup): skip the limit rather than share one bucket,
+  // but say so once, because a limit that does nothing looks just like one that works.
   const address = clientAddress((await headers()).get("x-forwarded-for"), trustedProxyHops);
-  if (address && !limiter.take(address)) return { status: "error", code: "rate_limited" };
+  if (!address) {
+    warnOnce(payload, trustedProxyHops === 0 ? LIMIT_OFF : NO_ADDRESS);
+  } else if (!limiter.take(address)) {
+    return { status: "error", code: "rate_limited" };
+  }
 
   const result = await createPublicBooking(payload, parsed.data);
   if (!result.ok) {
@@ -4647,7 +4805,7 @@ export async function bookFlash(formData: FormData): Promise<BookFlashState> {
 }
 ```
 
-Futtasd a tesztet: `npx vitest run tests/unit/book-flash.test.ts`. Expected: PASS (13 teszt).
+Futtasd a tesztet: `npx vitest run tests/unit/book-flash.test.ts`. Expected: PASS (26 teszt).
 
 - [ ] **Step 11: Lint, typecheck, teljes tesztkészlet**
 
@@ -5366,6 +5524,7 @@ EOF
 
 **Files:**
 - Create: `components/booking-dialog.tsx`
+- Create: `app/(frontend)/error.tsx`
 - Modify: `app/(frontend)/page.tsx`
 
 - [ ] **Step 1: `components/booking-dialog.tsx`: a teljes tartalom**
@@ -5374,7 +5533,7 @@ EOF
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { unstable_isUnrecognizedActionError, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { type BookFlashState, bookFlash, getOpenSlots } from "@/app/(frontend)/actions";
 import { PLACEMENTS } from "@/lib/booking-input";
@@ -5386,7 +5545,9 @@ import { useStore } from "./store";
 import { Arrow, btn } from "./ui";
 
 type Step = "slot" | "details" | "done";
-type ErrorCode = Extract<BookFlashState, { status: "error" }>["code"];
+// "outdated": the site was redeployed while the page was open, so its server actions no longer exist.
+type ErrorCode = Extract<BookFlashState, { status: "error" }>["code"] | "outdated";
+type Result = BookFlashState | { status: "error"; code: "outdated" };
 
 const ERROR_TEXT: Record<ErrorCode, string> = {
   invalid: "Nézd át a jelölt mezőket.",
@@ -5396,6 +5557,7 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
   slot_taken: "Ezt az időpontot közben lefoglalták, válassz másikat.",
   slot_past: "Ez az időpont már elmúlt, válassz másikat.",
   unknown: "Valami hiba történt. Próbáld újra, vagy írj Instagramon: @pannipix.",
+  outdated: "Az oldal közben frissült. Töltsd újra, és foglalj még egyszer.",
 };
 
 const field =
@@ -5440,10 +5602,10 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
   const [snapshot] = useState(design);
   const [step, setStep] = useState<Step>("slot");
   const [days, setDays] = useState<SlotDay[] | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadError, setLoadError] = useState<"failed" | "outdated" | null>(null);
   const [slot, setSlot] = useState<OpenSlot | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [result, setResult] = useState<BookFlashState>({ status: "idle" });
+  const [result, setResult] = useState<Result>({ status: "idle" });
   const [pending, startTransition] = useTransition();
   const placementId = useId();
   const noteId = useId();
@@ -5458,9 +5620,9 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
     getOpenSlots().then(
       (next) => {
         setDays(next);
-        setLoadFailed(false);
+        setLoadError(null);
       },
-      () => setLoadFailed(true),
+      (err: unknown) => setLoadError(unstable_isUnrecognizedActionError(err) ? "outdated" : "failed"),
     );
   }, []);
 
@@ -5477,7 +5639,7 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
   }, [step]);
 
   function retry() {
-    setLoadFailed(false);
+    setLoadError(null);
     setDays(null);
     loadSlots();
   }
@@ -5486,7 +5648,14 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     startTransition(async () => {
-      const next = await bookFlash(formData);
+      // A rejected action (dropped connection, redeploy, server error) must not reach the page's error boundary:
+      // the visitor keeps the form and gets a message instead.
+      let next: Result;
+      try {
+        next = await bookFlash(formData);
+      } catch (err) {
+        next = { status: "error", code: unstable_isUnrecognizedActionError(err) ? "outdated" : "unknown" };
+      }
       setResult(next);
       if (next.status === "success") {
         setStep("done");
@@ -5574,7 +5743,14 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
                 </p>
               )}
 
-              {loadFailed ? (
+              {loadError === "outdated" ? (
+                <div className="mt-6">
+                  <p className="leading-relaxed text-graphite">{ERROR_TEXT.outdated}</p>
+                  <button type="button" onClick={() => window.location.reload()} className={`${btn.outline} mt-5`}>
+                    Újratöltés
+                  </button>
+                </div>
+              ) : loadError === "failed" ? (
                 <div className="mt-6">
                   <p className="leading-relaxed text-graphite">Nem sikerült betölteni az időpontokat.</p>
                   <button type="button" onClick={retry} className={`${btn.outline} mt-5`}>
@@ -5815,6 +5991,36 @@ export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
 }
 ```
 
+- [ ] **Step 1b: Végső védőháló: `app/(frontend)/error.tsx`**
+
+Ha mégis kivétel érné el az oldalt, a látogató egy stílusos, magyar hibaoldalt lásson a Next alapértelmezett „Application error” képernyője helyett. A props pontos alakját (Next 16) nézd meg a `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/error.md`-ben, és ahhoz igazítsd.
+
+```tsx
+"use client";
+
+import { btn } from "@/components/ui";
+
+// Last resort when something on the page throws: keep the visitor on a styled, Hungarian page.
+export default function Error({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  return (
+    <main className="grid min-h-svh place-items-center px-5 text-center">
+      <div>
+        <p className="label text-muted">Hiba</p>
+        <h1 className="mt-5 font-display text-[clamp(2.4rem,5vw,4rem)] font-normal leading-none tracking-[-0.02em]">
+          Valami elromlott.
+        </h1>
+        <p className="mx-auto mt-5 max-w-[26rem] leading-[1.7] text-graphite">
+          Próbáld újra, vagy írj Instagramon: @pannipix.
+        </p>
+        <button type="button" onClick={reset} className={`${btn.primary} mt-9`}>
+          Újrapróbálom
+        </button>
+      </div>
+    </main>
+  );
+}
+```
+
 - [ ] **Step 2: Az ablak bekötése az oldalba (`app/(frontend)/page.tsx`)**
 
 Az importok közé, a `Booking` import után:
@@ -5840,7 +6046,7 @@ Expected: nincs hiba. Ha a `react-hooks` szabálycsomag a `useEffect(loadSlots, 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add components/booking-dialog.tsx "app/(frontend)/page.tsx"
+git add components/booking-dialog.tsx "app/(frontend)/page.tsx" "app/(frontend)/error.tsx"
 git commit -m "$(cat <<'EOF'
 feat: booking dialog with open slots, details form and confirmation
 

@@ -4850,11 +4850,12 @@ A lépések közben a typecheck piros lehet. A task végén (Step 9) zöldnek ke
 Kikerül a beégetett `designs` tömb, a `collections` lista és a `Collection` típus. A típusok a `lib/flash-types.ts`-ből jönnek.
 
 ```ts
-import type { Availability } from "@/lib/booking-rules";
+import type { Availability, BookingRule } from "@/lib/booking-rules";
 import { formatPrice } from "@/lib/format";
-import type { FlashDesign } from "@/lib/flash-types";
+import type { FlashCategory, FlashDesign } from "@/lib/flash-types";
 
 export { formatPrice };
+export type { BookingRule };
 export type { DesignImage, FlashCategory, FlashDesign } from "@/lib/flash-types";
 
 export const styles = ["Conceptual", "Abstract", "Microrealism"] as const;
@@ -4878,6 +4879,20 @@ export function priceRange(designs: FlashDesign[]) {
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   return min === max ? formatPrice(min) : `${formatPrice(min).replace(" Ft", "")} – ${formatPrice(max)}`;
+}
+
+/** The rule every collection books by; null when they differ or there are none. */
+export function sharedRule(categories: readonly Pick<FlashCategory, "rule">[]): BookingRule | null {
+  const rule = categories[0]?.rule;
+  return rule && categories.every((c) => c.rule === rule) ? rule : null;
+}
+
+const ruleNames: Record<BookingRule, string> = { single: "Egyszeri", limited: "Limitált", unlimited: "Korlátlan" };
+
+/** How often a flash design can be booked, in a word or two for the services overview. */
+export function ruleSummary(categories: readonly Pick<FlashCategory, "rule">[]) {
+  const rule = sharedRule(categories);
+  return rule ? ruleNames[rule] : "Kollekciónként eltérő";
 }
 ```
 
@@ -4974,23 +4989,34 @@ A foglalási ablak a Task 13-ban kerül az oldalra. Addig a naptár gomb és az 
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
-import { type FlashCategory, type FlashDesign, designName, formatPrice } from "./data";
+import { useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { type BookingRule, type FlashCategory, type FlashDesign, designName, formatPrice, sharedRule } from "./data";
 import { Calendar, ChevronDown, Heart } from "./icons";
 import { useStore } from "./store";
 import { Arrow, Pcons, StyleTags, btn, container } from "./ui";
 
 type Sort = "newest" | "price-asc" | "price-desc";
 
-const ALL = "Összes";
 /** Cards shown at first, and added by each "Több minta mutatása". */
 const PAGE = 8;
 
+// A sold-out design can't be had at any price, so the price sorts put it last.
+const soldOutLast = (a: FlashDesign, b: FlashDesign) => Number(a.availability.soldOut) - Number(b.availability.soldOut);
+
 const sorters: Record<Sort, (a: FlashDesign, b: FlashDesign) => number> = {
   newest: (a, b) => b.createdAt.localeCompare(a.createdAt),
-  "price-asc": (a, b) => a.price - b.price,
-  "price-desc": (a, b) => b.price - a.price,
+  "price-asc": (a, b) => soldOutLast(a, b) || a.price - b.price,
+  "price-desc": (a, b) => soldOutLast(a, b) || b.price - a.price,
 };
+
+/** How often a design is tattooed, when every collection books by the same rule. */
+const ruleIntro: Record<BookingRule, string> = {
+  single: "Mindegyik csak egyszer kerül bőrre, utána lekerül a kollekcióból.",
+  limited: "Mindegyik csak meghatározott számú alkalommal készül el.",
+  unlimited: "Bármelyik többször is elkészülhet.",
+};
+const mixedIntro = "Van, amelyik csak egyszer kerül bőrre, és van, amelyik többször is: ezt a kollekció dönti el.";
 
 export function showFlashProcess() {
   window.dispatchEvent(new CustomEvent("process-tab", { detail: "flash" }));
@@ -5010,7 +5036,7 @@ function FlashCard({ design }: { design: FlashDesign }) {
         <a
           href="#kiemelt"
           onClick={() => feature(design.id)}
-          aria-label={`${name} részletei`}
+          aria-label={`${name} részletei${soldOut ? " – elkelt" : ""}`}
           className="absolute inset-0 focus-visible:-outline-offset-4"
         >
           <Image
@@ -5018,7 +5044,7 @@ function FlashCard({ design }: { design: FlashDesign }) {
             alt={image.alt}
             fill
             quality={90}
-            sizes="(min-width: 1024px) 22vw, (min-width: 640px) 45vw, 50vw"
+            sizes="(min-width: 1440px) 320px, (min-width: 1024px) 22vw, (min-width: 640px) 45vw, 50vw"
             className={`object-contain mix-blend-multiply transition-[transform,opacity] duration-700 ease-settle group-hover:scale-[1.035] ${soldOut ? "opacity-35" : ""}`}
           />
         </a>
@@ -5033,7 +5059,7 @@ function FlashCard({ design }: { design: FlashDesign }) {
           type="button"
           onClick={() => toggleFavorite(design.id)}
           aria-pressed={saved}
-          aria-label={saved ? `${name} eltávolítása a mentettek közül` : `${name} mentése későbbre`}
+          aria-label={`${name} mentése későbbre`}
           className="absolute right-2 top-2 grid size-11 place-items-center rounded-full bg-paper/90 transition-[scale] duration-300 hover:scale-105 active:scale-90 active:duration-75"
         >
           <Heart size={19} filled={saved} />
@@ -5068,15 +5094,26 @@ function FlashCard({ design }: { design: FlashDesign }) {
 }
 
 export function FlashCollection({ designs, categories }: { designs: FlashDesign[]; categories: FlashCategory[] }) {
-  const [filter, setFilter] = useState(ALL);
+  /** The collection shown, by name; null shows every collection. */
+  const [filter, setFilter] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("newest");
   const [shown, setShown] = useState(PAGE);
+  const grid = useRef<HTMLDivElement>(null);
 
-  const visible = designs.filter((d) => filter === ALL || d.collection === filter).sort(sorters[sort]);
+  const visible = designs.filter((d) => filter === null || d.collection === filter).sort(sorters[sort]);
+  const rule = sharedRule(categories);
 
-  const choose = (name: string) => {
+  const choose = (name: string | null) => {
     setFilter(name);
     setShown(PAGE);
+  };
+
+  // Focus moves on to the first card just revealed, instead of staying behind on the button
+  // (or falling to <body> when the last page takes the button away).
+  const showMore = () => {
+    const first = shown;
+    flushSync(() => setShown((n) => n + PAGE));
+    grid.current?.children[first]?.querySelector("a")?.focus();
   };
 
   return (
@@ -5095,8 +5132,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
           </div>
           <div className="max-w-[23rem] lg:pb-2">
             <p className="leading-[1.7] text-graphite">
-              Előre megtervezett minták, amelyek a PANNIPIX világát képviselik. Van, amelyik csak egyszer kerül
-              bőrre, és van, amelyik többször is: ezt a kollekció dönti el.
+              Előre megtervezett minták, amelyek a PANNIPIX világát képviselik. {rule ? ruleIntro[rule] : mixedIntro}
             </p>
             <a href="#info" onClick={showFlashProcess} className="group label -mb-3 mt-3 inline-flex items-center gap-3 py-3">
               Hogyan működik a flash <Arrow />
@@ -5106,20 +5142,22 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
 
         <div className="mt-14 flex flex-col gap-6 border-b border-hairline pb-6 md:flex-row md:items-center md:justify-between">
           <div role="group" aria-label="Kollekció szűrése" className="-mx-5 flex gap-2.5 overflow-x-auto overscroll-x-contain px-5 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">
-            {[ALL, ...categories.map((c) => c.name)].map((c) => (
+            {[null, ...categories].map((c) => (
               <button
-                key={c}
+                key={c?.id ?? "all"}
                 type="button"
-                aria-pressed={filter === c}
-                onClick={() => choose(c)}
+                aria-pressed={filter === (c?.name ?? null)}
+                onClick={() => choose(c?.name ?? null)}
                 className="h-11 shrink-0 rounded-[6px] bg-stencil px-5 font-display text-[1.0625rem] transition-[background-color,color,scale] duration-300 hover:bg-[#e3e3df] active:scale-[0.97] active:duration-75 aria-pressed:bg-ink aria-pressed:text-paper"
               >
-                {c}
+                {c?.name ?? "Összes"}
               </button>
             ))}
           </div>
           <div className="flex items-center justify-between gap-8 md:justify-end">
-            <p className="text-[0.9375rem] text-muted" aria-live="polite">
+            {/* Read out whole, filter included, so switching to a collection of the same size is still announced. */}
+            <p className="text-[0.9375rem] text-muted" aria-live="polite" aria-atomic="true">
+              <span className="sr-only">{filter ?? "Összes"}: </span>
               {visible.length} minta
             </p>
             <label className="relative flex items-center gap-3 text-[0.9375rem]">
@@ -5139,7 +5177,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
         </div>
 
         {visible.length > 0 ? (
-          <div className="mt-10 grid grid-cols-2 gap-x-4 gap-y-12 sm:gap-x-6 lg:grid-cols-4 lg:gap-y-16">
+          <div ref={grid} className="mt-10 grid grid-cols-2 gap-x-4 gap-y-12 sm:gap-x-6 lg:grid-cols-4 lg:gap-y-16">
             {visible.slice(0, shown).map((d) => (
               <FlashCard key={d.id} design={d} />
             ))}
@@ -5147,14 +5185,16 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
         ) : (
           <div className="mt-10 flex flex-col items-center rounded-[3px] border border-dashed border-ash/70 px-6 py-24 text-center">
             <p className="max-w-[30rem] font-display text-[clamp(1.75rem,3vw,2.5rem)] leading-tight">
-              Ebben a kollekcióban most nincs elérhető minta.
+              {filter === null ? "Most nincs elérhető flash minta." : "Ebben a kollekcióban most nincs elérhető minta."}
             </p>
             <p className="mt-4 max-w-[26rem] leading-[1.7] text-graphite">
-              Nézz körül a többi kollekcióban, vagy kérj egyedi tervet a saját ötletedből.
+              {filter === null
+                ? "Kérj egyedi tervet a saját ötletedből, vagy nézz vissza később."
+                : "Nézz körül a többi kollekcióban, vagy kérj egyedi tervet a saját ötletedből."}
             </p>
             <div className="mt-9 flex flex-wrap justify-center gap-3">
-              {filter !== ALL && (
-                <button type="button" onClick={() => choose(ALL)} className={btn.outline}>
+              {filter !== null && (
+                <button type="button" onClick={() => choose(null)} className={btn.outline}>
                   Összes minta
                 </button>
               )}
@@ -5167,7 +5207,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
 
         {visible.length > shown && (
           <div className="mt-20 flex justify-center">
-            <button type="button" onClick={() => setShown((n) => n + PAGE)} className={`${btn.primary} min-w-[18rem]`}>
+            <button type="button" onClick={showMore} className={`${btn.primary} min-w-[18rem]`}>
               Több minta mutatása <Arrow />
             </button>
           </div>
@@ -5185,7 +5225,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
 
 import Image from "next/image";
 import { useState } from "react";
-import { type DesignImage, type FlashDesign, designName, formatPrice } from "./data";
+import { type BookingRule, type DesignImage, type FlashDesign, designName, formatPrice } from "./data";
 import { ChevronLeft, ChevronRight, Heart, Plus, Resize, Sparkle, Torso } from "./icons";
 import { useStore } from "./store";
 import { Arrow, Pcons, StyleTags, btn, container } from "./ui";
@@ -5237,7 +5277,7 @@ function ruleFact({ rule, limit, remaining, soldOut }: FlashDesign["availability
   if (rule === "single") {
     return {
       term: "Egyszeri minta",
-      body: soldOut ? "Ez a minta már gazdára talált, többé nem tetoválom." : "Ez a design csak egyszer készül el.",
+      body: soldOut ? "Ez a minta már gazdára talált." : "Ez a design csak egyszer készül el.",
     };
   }
   if (rule === "limited") {
@@ -5248,14 +5288,26 @@ function ruleFact({ rule, limit, remaining, soldOut }: FlashDesign["availability
         : `Összesen ${limit} alkalommal készül el, ebből még ${remaining} foglalható.`,
     };
   }
-  return { term: "Bármikor foglalható", body: "Ez a minta többször is elkészülhet." };
+  return { term: "Korlátlanul foglalható", body: "Ez a minta többször is elkészülhet." };
+}
+
+const bookingSteps =
+  "Kiválasztasz egy szabad időpontot, és elküldöd a foglalást. Most nem fizetsz semmit: átnézem a foglalást, és e-mailben visszaigazolom.";
+
+/** The booking steps, and what a booking takes from the offer under the collection's rule. */
+function howItWorks(rule: BookingRule) {
+  if (rule === "single") return `${bookingSteps} A foglalással a minta lekerül a kínálatból.`;
+  if (rule === "limited") return `${bookingSteps} A foglalással a minta egy alkalma lekerül a kínálatból.`;
+  return bookingSteps;
 }
 
 function Detail({ design }: { design: FlashDesign }) {
   const { favorites, toggleFavorite, openBooking } = useStore();
   const [active, setActive] = useState(0);
+  // A refresh keeps the picked view but can bring fewer images; past the end, show the first.
+  const current = active < design.images.length ? active : 0;
   const name = designName(design);
-  const image = design.images[active];
+  const image = design.images[current];
   const saved = favorites.has(design.id);
   const { soldOut } = design.availability;
   const fact = ruleFact(design.availability);
@@ -5264,7 +5316,7 @@ function Detail({ design }: { design: FlashDesign }) {
     <div className="mt-8 grid gap-12 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:gap-20">
       <div>
         <div className="relative aspect-[4/5] overflow-hidden rounded-[3px] bg-stencil">
-          <Picture key={image.src} image={image} sizes="(min-width: 1024px) 48vw, 92vw" />
+          <Picture key={image.src} image={image} sizes="(min-width: 1440px) 700px, (min-width: 1024px) 48vw, 92vw" />
           {soldOut && (
             <span className="label absolute left-4 top-4 rounded-[3px] bg-paper px-2.5 py-2 text-[0.625rem]">Elkelt</span>
           )}
@@ -5274,14 +5326,15 @@ function Detail({ design }: { design: FlashDesign }) {
           <div role="group" aria-label="Nézetek" className="mt-3 grid grid-cols-3 gap-3">
             {design.images.map((img, i) => (
               <button
-                key={img.src}
+                // By position: the same image can be attached twice.
+                key={i}
                 type="button"
                 onClick={() => setActive(i)}
-                aria-pressed={active === i}
+                aria-pressed={current === i}
                 aria-label={img.label}
                 className="relative aspect-[5/6] overflow-hidden rounded-[3px] border border-transparent bg-stencil transition-[border-color,scale] duration-200 hover:border-ash active:scale-[0.97] aria-pressed:border-ink"
               >
-                <Picture image={img} sizes="16vw" thumb />
+                <Picture image={img} sizes="(min-width: 1024px) 230px, 30vw" thumb />
               </button>
             ))}
           </div>
@@ -5332,8 +5385,9 @@ function Detail({ design }: { design: FlashDesign }) {
             aria-pressed={saved}
             className={`${btn.outline} w-full`}
           >
+            {/* The label stays put; aria-pressed and the filled heart carry the state. */}
             <Heart size={18} filled={saved} />
-            {saved ? "Elmentve" : "Mentés későbbre"}
+            Mentés későbbre
           </button>
         </div>
 
@@ -5344,10 +5398,7 @@ function Detail({ design }: { design: FlashDesign }) {
               "Fontos információk",
               "A méret csak kis mértékben módosítható, hogy a részletek tiszták maradjanak. Kisebb változtatásokat, például egy elem elhagyását, a konzultáción egyeztetünk.",
             ],
-            [
-              "Hogyan működik?",
-              "Kiválasztasz egy szabad időpontot, és elküldöd a foglalást. Most nem fizetsz semmit: átnézem a foglalást, és e-mailben visszaigazolom. A foglalással a minta egy alkalma lekerül a kínálatból.",
-            ],
+            ["Hogyan működik?", howItWorks(design.availability.rule)],
           ].map(([title, body]) => (
             <details key={title} className="border-b border-hairline">
               <summary className="label flex items-center justify-between py-5 text-[0.75rem]">
@@ -5458,7 +5509,7 @@ export function Paths({ flashPrice }: { flashPrice: string | null }) {
 import { connection } from "next/server";
 import { About } from "@/components/about";
 import { Booking } from "@/components/booking";
-import { priceRange } from "@/components/data";
+import { priceRange, ruleSummary } from "@/components/data";
 import { Faq } from "@/components/faq";
 import { FlashCollection } from "@/components/flash-collection";
 import { Footer } from "@/components/footer";
@@ -5474,9 +5525,11 @@ export default async function Home() {
   // Rendered per request so availability is always current, and the build never touches the database.
   await connection();
   const { categories, designs } = await getFlashCatalog();
+  // Designs come newest first: the spotlight opens on the newest one that can still be booked, else the newest.
+  const featured = designs.find((d) => !d.availability.soldOut) ?? designs[0];
 
   return (
-    <StoreProvider initialFeatured={designs[0]?.id ?? null}>
+    <StoreProvider initialFeatured={featured?.id ?? null}>
       <a
         href="#main"
         className="label sr-only z-60 rounded-[5px] bg-ink px-4 py-3 text-paper focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
@@ -5486,7 +5539,7 @@ export default async function Home() {
       <Header />
       <main id="main">
         <Hero />
-        <Paths flashPrice={priceRange(designs)} />
+        <Paths flashPrice={priceRange(designs)} flashRule={ruleSummary(categories)} />
         <FlashCollection designs={designs} categories={categories} />
         <Spotlight designs={designs} />
         <Process />
@@ -5519,6 +5572,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
 )"
 ```
+
+> **Az átnézés után (commit `0c72ea4`):**
+> - A fenti blokkok a végleges kódot mutatják. A `Paths` a `flashRule` propot is megkapja; ez a `ruleSummary(categories)` eredménye, és az „Alkalmak” sorban jelenik meg.
+> - Új teszt: `tests/unit/data.test.ts`.
+> - A kiemelt rész a legújabb foglalható mintán indul. Az ár szerinti rendezés az elkelt mintákat a végére teszi.
 
 ---
 

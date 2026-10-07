@@ -202,10 +202,10 @@ A `completed` állapotra és az időpont-áthelyezésre nem megy e-mail. Státus
 - A `lib/flash.ts` a Local API-ból képez a frontend típusaira: kollekciók, látható minták a képeikkel, foglalhatóság (szabály, limit, hátralévő alkalmak, elkelt-e).
 - Az adatok propként jutnak a kliens komponensekhez (`FlashCollection`, `Spotlight`, `Paths`).
 - A `components/data.ts`-ből kikerül a `designs` tömb és a `collections` lista; a típusok és a segédfüggvények maradnak.
-- **Rendezés:** a „Legújabb” a létrehozás ideje szerint csökkenő, az ár szerinti rendezések maradnak.
+- **Rendezés:** a „Legújabb” a létrehozás ideje szerint csökkenő. Az ár szerinti rendezések maradnak, de az elkelt minták a végükre kerülnek.
 - **Kollekciószűrő:** az adatbázis kollekcióiból, `order` szerint.
 - **„Több minta mutatása”:** először 8 minta, gombnyomásra további 8. Ha minden minta látszik, a gomb eltűnik.
-- **Kiemelt minta:** alapból a legújabb látható minta.
+- **Kiemelt minta:** alapból a legújabb foglalható minta; ha nincs ilyen, a legújabb látható.
 
 ### 9.2 Kosár → foglalás
 

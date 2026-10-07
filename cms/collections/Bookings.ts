@@ -26,7 +26,15 @@ export const Bookings: CollectionConfig = {
     {
       type: "row",
       fields: [
-        { name: "design", type: "relationship", relationTo: "designs", required: true, label: "Minta" },
+        {
+          name: "design",
+          type: "relationship",
+          relationTo: "designs",
+          required: true,
+          label: "Minta",
+          // "Edit many" saves the bookings in parallel: moved onto one design together, they'd all pick the same seat.
+          admin: { disableBulkEdit: true },
+        },
         {
           name: "slot",
           type: "relationship",

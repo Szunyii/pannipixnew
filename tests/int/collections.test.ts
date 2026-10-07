@@ -184,7 +184,7 @@ describe("collections", () => {
     expect(await state(past.id)).toBe("Lejárt");
   });
 
-  it("keeps internal fields out of the admin's bulk edit", () => {
+  it("keeps internal fields and a booking's design out of the admin's bulk edit", () => {
     // "Edit many" skips fields that are unique, readOnly, disabled, top-level hidden or disableBulkEdit, but not admin.hidden.
     const field = (slug: "bookings" | "designs" | "slots", name: string) => {
       const found = payload.collections[slug].config.flattenedFields.find((f) => f.name === name);
@@ -198,6 +198,8 @@ describe("collections", () => {
       disableListColumn: true,
       disableListFilter: true,
     });
+    // A bulk edit saves its documents in parallel: bookings moved onto one design together would all pick the same seat.
+    expect(field("bookings", "design").admin).toMatchObject({ disableBulkEdit: true });
 
     // Payload adds the zone picker beside startsAt; the override relabels it and keeps it out of lists and bulk edit.
     const timezone = field("slots", "startsAt_tz") as SelectField;

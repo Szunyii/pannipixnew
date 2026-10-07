@@ -1,4 +1,4 @@
-import { ValidationError } from "payload";
+import { type PayloadRequest, ValidationError } from "payload";
 
 export type BookingErrorCode =
   | "design_unavailable"
@@ -19,7 +19,7 @@ export const BOOKING_MESSAGES: Record<BookingErrorCode, string> = {
   create_released: "Új foglalás csak Függőben, Jóváhagyva vagy Elkészült állapotban hozható létre.",
 };
 
-const FIELD: Record<BookingErrorCode, string> = {
+const FIELD = {
   design_unavailable: "design",
   sold_out: "design",
   slot_required: "slot",
@@ -27,14 +27,23 @@ const FIELD: Record<BookingErrorCode, string> = {
   slot_taken: "slot",
   reactivate: "status",
   create_released: "status",
+} as const satisfies Record<BookingErrorCode, string>;
+
+/** The Bookings field labels; the admin's error toast names the field with them. */
+const FIELD_LABEL: Record<(typeof FIELD)[BookingErrorCode], string> = {
+  design: "Minta",
+  slot: "Időpont",
+  status: "Állapot",
 };
 
 /** A booking rule failed. The admin shows the message under the field; the website maps the code. */
 export class BookingError extends ValidationError {
   readonly code: BookingErrorCode;
 
-  constructor(code: BookingErrorCode) {
-    super({ collection: "bookings", errors: [{ message: BOOKING_MESSAGES[code], path: FIELD[code] }] });
+  /** Pass `req.t`: without it Payload words the admin's toast in English. */
+  constructor(code: BookingErrorCode, t?: PayloadRequest["t"]) {
+    const path = FIELD[code];
+    super({ collection: "bookings", errors: [{ label: FIELD_LABEL[path], message: BOOKING_MESSAGES[code], path }] }, t);
     this.code = code;
     this.name = "BookingError";
   }

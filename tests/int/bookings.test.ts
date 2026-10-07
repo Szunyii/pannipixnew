@@ -5,6 +5,7 @@ import {
   createCategory,
   createDesign,
   createSlot,
+  customer,
   getTestPayload,
   resetDatabase,
 } from "../helpers";
@@ -37,6 +38,35 @@ describe("booking rules", () => {
     expect((await createBooking(payload, design.id, first.id)).seat).toBe(1);
   });
 
+  it("explains a refusal in Hungarian, under the field it concerns", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "single")).id);
+    await createBooking(payload, design.id, (await createSlot(payload)).id);
+
+    const refusal = await createBooking(payload, design.id, (await createSlot(payload)).id).catch((err: unknown) => err);
+    expect(refusal).toMatchObject({
+      name: "BookingError",
+      code: "sold_out",
+      data: { errors: [{ path: "design", message: "Ez a minta már betelt." }] },
+    });
+    // The admin form shows this one as a toast.
+    expect((refusal as Error).message).toBe("A következő mező érvénytelen: Minta");
+  });
+
+  it("keeps the seat and the slot while the admin confirms and completes a booking on a full design", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "single")).id);
+    const slot = await createSlot(payload);
+    const { id } = await createBooking(payload, design.id, slot.id);
+
+    for (const status of ["confirmed", "completed"] as const) {
+      const updated = await payload.update({ collection: "bookings", id, data: { status }, depth: 0 });
+      expect(updated).toMatchObject({ status, seat: 1, slot: slot.id });
+    }
+    // The admin form sends the whole document back, unchanged fields included.
+    const doc = await payload.findByID({ collection: "bookings", id, depth: 0 });
+    const saved = await payload.update({ collection: "bookings", id, data: { ...doc, note: "x" }, depth: 0 });
+    expect(saved).toMatchObject({ status: "completed", seat: 1, slot: slot.id, note: "x" });
+  });
+
   it("books a limited design as many times as its collection allows", async () => {
     const design = await createDesign(payload, (await createCategory(payload, "limited", 2)).id);
     const seats = [];
@@ -63,23 +93,37 @@ describe("booking rules", () => {
     await expect(createBooking(payload, b.id, slot.id)).rejects.toMatchObject({ code: "slot_taken" });
   });
 
-  it("never brings a rejected or cancelled booking back", async () => {
+  it.each(["rejected", "cancelled"] as const)("never brings a %s booking back", async (status) => {
     const design = await createDesign(payload, (await createCategory(payload, "single")).id);
     const booking = await createBooking(payload, design.id, (await createSlot(payload)).id);
-    await payload.update({ collection: "bookings", id: booking.id, data: { status: "rejected" } });
+    await payload.update({ collection: "bookings", id: booking.id, data: { status } });
 
     await expect(
       payload.update({ collection: "bookings", id: booking.id, data: { status: "confirmed" } }),
     ).rejects.toMatchObject({ code: "reactivate" });
-    const cancelled = await payload.update({ collection: "bookings", id: booking.id, data: { status: "cancelled" } });
-    expect(cancelled.status).toBe("cancelled");
+    // Switching between the two released statuses is fine.
+    const other = status === "rejected" ? "cancelled" : "rejected";
+    expect((await payload.update({ collection: "bookings", id: booking.id, data: { status: other } })).status).toBe(other);
   });
 
-  it("does not create a booking that is already rejected", async () => {
+  it.each(["rejected", "cancelled"] as const)("does not create a booking that is already %s", async (status) => {
     const design = await createDesign(payload, (await createCategory(payload, "single")).id);
     await expect(
-      createBooking(payload, design.id, (await createSlot(payload)).id, { status: "rejected" }),
+      createBooking(payload, design.id, (await createSlot(payload)).id, { status }),
     ).rejects.toMatchObject({ code: "create_released" });
+  });
+
+  it("asks the admin for a slot", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "single")).id);
+    await expect(
+      payload.create({ collection: "bookings", data: { ...customer, design: design.id, status: "pending" } }),
+    ).rejects.toMatchObject({ code: "slot_required" });
+  });
+
+  it("refuses a design that doesn't exist", async () => {
+    await expect(createBooking(payload, 999_999, (await createSlot(payload)).id)).rejects.toMatchObject({
+      code: "design_unavailable",
+    });
   });
 
   it("moves a booking only to a free slot", async () => {

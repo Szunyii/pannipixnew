@@ -143,7 +143,8 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
             <p className="label text-muted">Flash kollekció</p>
             <h2
               id="flash-title"
-              className="mt-4 font-display text-[clamp(4rem,10vw,8.75rem)] font-normal leading-[0.88] tracking-[-0.03em]"
+              tabIndex={-1}
+              className="mt-4 font-display text-[clamp(4rem,10vw,8.75rem)] font-normal leading-[0.88] tracking-[-0.03em] focus:outline-none"
             >
               <Pcons />
             </h2>

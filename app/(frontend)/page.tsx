@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { About } from "@/components/about";
 import { Booking } from "@/components/booking";
+import { BookingDialog } from "@/components/booking-dialog";
 import { priceRange, ruleSummary } from "@/components/data";
 import { Faq } from "@/components/faq";
 import { FlashCollection } from "@/components/flash-collection";
@@ -40,6 +41,7 @@ export default async function Home() {
         <Booking />
       </main>
       <Footer />
+      <BookingDialog designs={designs} />
     </StoreProvider>
   );
 }

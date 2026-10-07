@@ -91,6 +91,10 @@ describe("parseBookingInput", () => {
     ["next-line character", "Anna\u0085Kiss"],
     ["line separator", "Anna\u2028Kiss"],
     ["bidi override", "Anna\u202eKiss"],
+    ["link", "Anna https://spam.example"],
+    ["web address", "www.spam.hu"],
+    ["capitalised link", "ANNA HTTP://SPAM.EXAMPLE"],
+    ["scheme without slashes", "Anna http:spam.example"],
   ])("rejects a %s in the name", (_kind, name) => {
     const result = parseBookingInput({ ...valid, name });
     expect(result.ok).toBe(false);
@@ -116,6 +120,7 @@ describe("parseBookingInput boundaries", () => {
   it.each([
     { label: "a name of 1 character", field: "name", value: "A", ok: false },
     { label: "a name of 2 characters, accents included", field: "name", value: "Ád", ok: true },
+    { label: "a name with a title, a dot and a hyphen", field: "name", value: "Dr. Szabó-Nagy Ágnes", ok: true },
     { label: "a name of 100 characters", field: "name", value: "a".repeat(100), ok: true },
     { label: "a name of 101 characters", field: "name", value: "a".repeat(101), ok: false },
     { label: "an email of 254 characters", field: "email", value: emailOfLength(254), ok: true },

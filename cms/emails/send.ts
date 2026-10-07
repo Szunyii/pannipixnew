@@ -1,6 +1,7 @@
 import type { CollectionAfterChangeHook } from "payload";
 import { placementLabel } from "@/lib/booking-input";
 import type { Booking } from "@/payload-types";
+import { siteUrl } from "../env";
 import {
   type BookingEmailData,
   type BookingEmailKind,
@@ -25,6 +26,11 @@ const builders: Record<BookingEmailKind, (d: BookingEmailData) => EmailContent> 
  * Starts the booking's emails without waiting for them: a slow mail server must not hold up the
  * visitor or the admin. An email that fails to build, start or send is logged and skipped: it never
  * undoes the booking or keeps the other emails from going out.
+ *
+ * This assumes the site runs as one long-running Node process (`next start`, as on Hostinger): a send
+ * nobody waits for still finishes after the response has gone out. A send still in flight when the
+ * process restarts is lost, and no failure is logged for it. A host that freezes the function once it
+ * has responded would need these sends awaited.
  */
 export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
   doc,
@@ -41,7 +47,7 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
   });
   if (kinds.length === 0) return doc;
 
-  const siteUrl = (process.env.SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+  const site = siteUrl();
   const adminEmail = process.env.ADMIN_EMAIL;
   const data: BookingEmailData = {
     name: doc.name,
@@ -52,13 +58,17 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
     designName: doc.designName ?? "",
     slotStartsAt: doc.slotStartsAt,
     price: doc.price,
-    adminUrl: `${siteUrl}/admin/collections/bookings/${doc.id}`,
-    siteUrl,
+    adminUrl: `${site}/admin/collections/bookings/${doc.id}`,
+    siteUrl: site,
   };
 
   for (const kind of kinds) {
     const toAdmin = kind === "admin-new";
-    if (toAdmin && !adminEmail) continue;
+    if (toAdmin && !adminEmail) {
+      // The line names the setting to fix and nothing about the booking: no personal data in the log.
+      req.payload.logger.warn("ADMIN_EMAIL is not set; the new-booking email was not sent.");
+      continue;
+    }
     const failed = (err: unknown) => {
       req.payload.logger.error({ err, msg: `Booking email "${kind}" for booking ${doc.id} failed` });
     };
@@ -71,6 +81,8 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
           subject,
           html,
           text,
+          // Marks the mail as machine-sent, so out-of-office replies and other auto-responders leave it alone.
+          headers: { "Auto-Submitted": "auto-generated" },
         })
         .catch(failed);
     } catch (err) {

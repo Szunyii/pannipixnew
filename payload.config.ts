@@ -12,7 +12,7 @@ import { Designs } from "./cms/collections/Designs";
 import { Media } from "./cms/collections/Media";
 import { Slots } from "./cms/collections/Slots";
 import { Users } from "./cms/collections/Users";
-import { dataLocation } from "./cms/env";
+import { dataLocation, isProductionRuntime } from "./cms/env";
 import { TIME_ZONE } from "./lib/time";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -81,6 +81,14 @@ export default buildConfig({
   // books dozens of times. The destination is Payload's own, so the output keeps its usual look.
   logger: process.env.VITEST ? { options: { level: "warn" }, destination: defaultLoggerOptions } : undefined,
   loggingLevels: expectedRefusals,
+  // Bookings work without mail settings, but the emails would go missing or to the console: say so once at start-up.
+  onInit: (payload) => {
+    if (!isProductionRuntime) return;
+    const missing = ["ADMIN_EMAIL", "SITE_URL", "SMTP_HOST"].filter((name) => !process.env[name]);
+    if (missing.length > 0) {
+      payload.logger.warn(`Booking emails are not fully configured; missing: ${missing.join(", ")} (see .env.example).`);
+    }
+  },
   secret: process.env.PAYLOAD_SECRET || "",
   sharp,
   // Payload otherwise runs `git config` and posts anonymous usage data on every init, test files included.

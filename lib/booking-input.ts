@@ -50,6 +50,9 @@ const isPlacement = (value: string): value is Placement => PLACEMENTS.some((p) =
 /** Controls (CR, LF, tab, C1), line and paragraph separators and bidi overrides: a name is one plain line. */
 const NOT_IN_A_NAME = /[\p{Cc}\p{Zl}\p{Zp}\u202a-\u202e\u2066-\u2069]/u;
 
+/** The name goes into the emails and the form takes any address, so a link in it would be spam sent from our mailbox. */
+const LINK_LIKE = /:\/\/|www\.|https?:/i;
+
 /**
  * The rule Payload applies to the booking's email field (payload 3.90.2, fields/validations). Anything laxer here
  * passes the form and then fails inside payload.create, where the visitor only gets the generic error.
@@ -72,7 +75,9 @@ export function parseBookingInput(
 
   if (designId === null) errors.designId = "Hiányzik a minta.";
   if (slotId === null) errors.slotId = "Válassz időpontot.";
-  if (name.length < 2 || name.length > 100 || NOT_IN_A_NAME.test(name)) errors.name = "Add meg a neved.";
+  if (name.length < 2 || name.length > 100 || NOT_IN_A_NAME.test(name) || LINK_LIKE.test(name)) {
+    errors.name = "Add meg a neved.";
+  }
   if (email.length > 254 || !EMAIL.test(email)) {
     errors.email = "Adj meg egy érvényes e-mail-címet.";
   }

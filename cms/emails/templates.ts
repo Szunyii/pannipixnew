@@ -1,3 +1,5 @@
+import { type BookingStatus, isActiveStatus } from "@/lib/booking-rules";
+import { PAYMENT_NOTE } from "@/lib/copy";
 import { formatPrice } from "@/lib/format";
 import { formatSlotFull } from "@/lib/time";
 
@@ -26,6 +28,12 @@ export function escapeHtml(value: string) {
   );
 }
 
+/** A value for an HTML table cell: escaped first, then its line breaks (a note comes from a textarea) become <br>. */
+const multiline = (value: string) => escapeHtml(value).replace(/\r?\n/g, "<br>");
+
+/** Set on <body> and again on the wrapper <div>: some mail clients drop the styles of <body>. */
+const BASE_STYLE = "background:#f7f7f5;color:#121211;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.6";
+
 const when = (d: BookingEmailData) => (d.slotStartsAt ? formatSlotFull(d.slotStartsAt) : "–");
 const price = (d: BookingEmailData) => (typeof d.price === "number" ? formatPrice(d.price) : "–");
 
@@ -45,7 +53,7 @@ function render(subject: string, blocks: Block[]): EmailContent {
         const rows = b.rows
           .map(
             ([k, v]) =>
-              `<tr><td style="padding:4px 16px 4px 0;color:#6e6d66;font-size:12px;letter-spacing:.16em;text-transform:uppercase;vertical-align:top">${escapeHtml(k)}</td><td style="padding:4px 0">${escapeHtml(v)}</td></tr>`,
+              `<tr><td style="padding:4px 16px 4px 0;color:#6e6d66;font-size:12px;letter-spacing:.16em;text-transform:uppercase;vertical-align:top">${escapeHtml(k)}</td><td style="padding:4px 0">${multiline(v)}</td></tr>`,
           )
           .join("");
         return `<table role="presentation" style="margin:0 0 20px;border-collapse:collapse">${rows}</table>`;
@@ -54,7 +62,7 @@ function render(subject: string, blocks: Block[]): EmailContent {
     })
     .join("");
 
-  const html = `<!doctype html><html lang="hu"><body style="margin:0;background:#f7f7f5;color:#121211;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.6"><div style="max-width:560px;margin:0 auto;padding:32px 24px"><p style="margin:0 0 28px;font-size:13px;letter-spacing:.3em">PANNIPIX</p>${body}</div></body></html>`;
+  const html = `<!doctype html><html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;${BASE_STYLE}"><div style="max-width:560px;margin:0 auto;padding:32px 24px;${BASE_STYLE}"><p style="margin:0 0 28px;font-size:13px;letter-spacing:.3em">PANNIPIX</p>${body}</div></body></html>`;
   return { subject, html, text };
 }
 
@@ -74,9 +82,7 @@ export function customerReceivedEmail(d: BookingEmailData): EmailContent {
     greeting(d),
     { p: "Megkaptam a foglalásodat. Hamarosan átnézem, és e-mailben visszaigazolom." },
     details(d),
-    {
-      p: "A foglalás nem vásárlás: most nem fizetsz semmit, a részleteket a visszaigazolásban egyeztetjük. Ha kérdésed van, válaszolj erre a levélre.",
-    },
+    { p: `${PAYMENT_NOTE} Ha kérdésed van, válaszolj erre a levélre.` },
     signature,
   ]);
 }
@@ -136,7 +142,11 @@ export type BookingEmailKind =
   | "customer-rejected"
   | "customer-cancelled";
 
-/** Which emails a booking change sends. Completing a booking or moving it to another slot sends none. */
+/**
+ * Which emails a booking change sends. The customer hears about a decision once: a confirmation when a pending booking
+ * is confirmed, a rejection or cancellation when an active booking is let go. Completing a booking, moving it to
+ * another slot and correcting a status afterwards (completed to confirmed, rejected to cancelled) send none.
+ */
 export function bookingEmailsFor({
   operation,
   isPublic,
@@ -145,8 +155,8 @@ export function bookingEmailsFor({
 }: {
   operation: "create" | "update";
   isPublic: boolean;
-  status: string;
-  previousStatus?: string | null;
+  status: BookingStatus;
+  previousStatus?: BookingStatus | null;
 }): BookingEmailKind[] {
   if (operation === "create") {
     const kinds: BookingEmailKind[] = isPublic ? ["admin-new"] : [];
@@ -154,9 +164,8 @@ export function bookingEmailsFor({
     if (status === "confirmed") kinds.push("customer-confirmed");
     return kinds;
   }
-  if (status === previousStatus) return [];
-  if (status === "confirmed") return ["customer-confirmed"];
-  if (status === "rejected") return ["customer-rejected"];
-  if (status === "cancelled") return ["customer-cancelled"];
+  if (status === "confirmed") return previousStatus === "pending" ? ["customer-confirmed"] : [];
+  if (status === "rejected" && isActiveStatus(previousStatus)) return ["customer-rejected"];
+  if (status === "cancelled" && isActiveStatus(previousStatus)) return ["customer-cancelled"];
   return [];
 }

@@ -15,7 +15,8 @@ import {
 } from "../helpers";
 
 let payload: Payload;
-let sent: { to: string; subject: string }[];
+/** What the mail adapter was asked to send, as plain strings. */
+let sent: { to: string; replyTo?: string; subject: string; text: string; headers?: unknown }[];
 
 beforeAll(async () => {
   payload = await getTestPayload();
@@ -25,7 +26,13 @@ beforeEach(async () => {
   await resetDatabase(payload);
   sent = [];
   vi.spyOn(payload, "sendEmail").mockImplementation(async (message) => {
-    sent.push({ to: String(message.to), subject: String(message.subject) });
+    sent.push({
+      to: String(message.to),
+      replyTo: message.replyTo === undefined ? undefined : String(message.replyTo),
+      subject: String(message.subject),
+      text: String(message.text),
+      headers: message.headers,
+    });
   });
 });
 
@@ -44,13 +51,67 @@ async function onlyBookingId() {
   return docs[0].id;
 }
 
+/** Books a design on the website and returns the new booking's id. */
+async function bookOnTheWebsite() {
+  const d = await design();
+  const result = await createPublicBooking(payload, publicInput(d.id, (await createSlot(payload)).id));
+  expect(result.ok).toBe(true);
+  return onlyBookingId();
+}
+
+/** Runs `run` with an environment variable set (undefined removes it), then puts the variable back. */
+async function withEnv(name: string, value: string | undefined, run: () => Promise<void>) {
+  const original = process.env[name];
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+  try {
+    await run();
+  } finally {
+    if (original === undefined) delete process.env[name];
+    else process.env[name] = original;
+  }
+}
+
 describe("booking emails", () => {
   it("tell the admin and the customer about a website booking", async () => {
-    const d = await design();
-    await createPublicBooking(payload, publicInput(d.id, (await createSlot(payload)).id));
-    expect(sent.map((m) => m.to)).toEqual(["admin@example.com", "teszt.elek@example.com"]);
+    await bookOnTheWebsite();
+    expect(sent.map((m) => m.to)).toEqual(["admin@example.com", customer.email]);
     expect(sent[0].subject).toMatch(/^Új foglalás: /);
     expect(sent[1].subject).toMatch(/^Megkaptam a foglalásod/);
+  });
+
+  it.each(["https://pannipix.test", "https://pannipix.test/"])("send the admin a link to the booking when SITE_URL is %j", async (siteUrl) => {
+    await withEnv("SITE_URL", siteUrl, async () => {
+      const id = await bookOnTheWebsite();
+      const [toAdmin] = sent;
+      expect(toAdmin.to).toBe("admin@example.com");
+      expect(toAdmin.text).toContain(`https://pannipix.test/admin/collections/bookings/${id}`);
+      expect(toAdmin.text).not.toContain("//admin");
+    });
+  });
+
+  it("route a reply to the other side: the admin's email to the customer, the customer's to the admin", async () => {
+    await bookOnTheWebsite();
+    const [toAdmin, toCustomer] = sent;
+    expect(toAdmin.replyTo).toBe(customer.email);
+    expect(toCustomer.to).toBe(customer.email);
+    expect(toCustomer.replyTo).toBe("admin@example.com");
+  });
+
+  it("are marked as automatic, so out-of-office replies stay away", async () => {
+    await bookOnTheWebsite();
+    expect(sent).toHaveLength(2);
+    for (const email of sent) expect(email.headers).toEqual({ "Auto-Submitted": "auto-generated" });
+  });
+
+  it("send only the customer's email, and log why, when ADMIN_EMAIL is not set", async () => {
+    const warned = vi.spyOn(payload.logger, "warn").mockImplementation(() => undefined);
+    await withEnv("ADMIN_EMAIL", undefined, async () => {
+      await bookOnTheWebsite();
+      expect(sent.map((m) => m.to)).toEqual([customer.email]);
+      expect(sent[0].replyTo).toBeUndefined();
+      expect(warned).toHaveBeenCalledExactlyOnceWith("ADMIN_EMAIL is not set; the new-booking email was not sent.");
+    });
   });
 
   it("follow the status: confirmed, then cancelled", async () => {
@@ -98,6 +159,25 @@ describe("booking emails", () => {
       });
     } finally {
       process.off("unhandledRejection", onUnhandled);
+      payload.sendEmail = spied;
+    }
+  });
+
+  it("never hold a booking up while the mail server is slow", async () => {
+    // A plain function again, so a mock can't swallow what the hook does with the promise it gets.
+    let calls = 0;
+    const spied = payload.sendEmail;
+    payload.sendEmail = () => {
+      calls += 1;
+      return new Promise(() => {});
+    };
+    try {
+      const d = await design();
+      const result = await createPublicBooking(payload, publicInput(d.id, (await createSlot(payload)).id));
+
+      expect(result).toEqual({ ok: true, bookingId: expect.any(Number) });
+      expect(calls).toBe(2);
+    } finally {
       payload.sendEmail = spied;
     }
   });

@@ -76,8 +76,22 @@ describe("website bookings", () => {
     ]);
 
     expect(results.every((r) => r.ok)).toBe(true);
-    const booked = await payload.find({ collection: "bookings", where: { design: { equals: design.id } } });
-    expect(booked.docs.map((b) => b.seat).sort()).toEqual([1, 2]);
+    const booked = await payload.find({ collection: "bookings", where: { design: { equals: design.id } }, pagination: false });
+    expect(booked.docs.map((b) => b.seat ?? 0).sort((a, b) => a - b)).toEqual([1, 2]);
+  });
+
+  it("give every seat to a crowd that asks at once, and tell the rest it sold out", async () => {
+    // More requests than MAX_ATTEMPTS: if the losers retried in lockstep, the last ones would run out of attempts.
+    const design = await createDesign(payload, (await createCategory(payload, "limited", 12)).id);
+    const slots = [];
+    for (let i = 0; i < 14; i += 1) slots.push(await createSlot(payload));
+
+    const results = await Promise.all(slots.map((s) => createPublicBooking(payload, publicInput(design.id, s.id))));
+
+    expect(results.filter((r) => r.ok)).toHaveLength(12);
+    expect(results.filter((r) => !r.ok)).toEqual(Array(2).fill({ ok: false, code: "sold_out" }));
+    const booked = await payload.find({ collection: "bookings", where: { design: { equals: design.id } }, pagination: false });
+    expect(booked.docs.map((b) => b.seat ?? 0).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   });
 
   it("let exactly one of two simultaneous requests take a slot", async () => {

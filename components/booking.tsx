@@ -26,7 +26,7 @@ function Field({
 
 export function Booking() {
   const [sent, setSent] = useState(false);
-  const [placement, setPlacement] = useState("");
+  const formTitleId = useId();
   const ideaId = useId();
   const placeId = useId();
 
@@ -60,13 +60,14 @@ export function Booking() {
         </div>
 
         <form
+          aria-labelledby={formTitleId}
           onSubmit={(e) => {
             e.preventDefault();
             setSent(true);
           }}
           className="lg:pt-3"
         >
-          <p className="label text-[0.6875rem] text-ash">Egyedi tetoválás</p>
+          <p id={formTitleId} className="label text-[0.6875rem] text-ash">Egyedi tetoválás</p>
           <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2">
             <Field label="Név" name="name" autoComplete="name" autoCapitalize="words" enterKeyHint="next" required />
             <Field label="E-mail" name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next" required />
@@ -92,9 +93,8 @@ export function Booking() {
                 <select
                   id={placeId}
                   name="placement"
-                  value={placement}
-                  onChange={(e) => setPlacement(e.target.value)}
-                  className={`${field} cursor-pointer appearance-none pr-8 ${placement ? "" : "text-ash/60"}`}
+                  defaultValue=""
+                  className={`${field} cursor-pointer appearance-none pr-8`}
                 >
                   <option value="" disabled className="text-ink">
                     Válassz

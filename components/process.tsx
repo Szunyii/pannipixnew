@@ -48,7 +48,7 @@ const steps: Record<Tab, { title: string; body: string }[]> = {
     },
     {
       title: "Tetoválás",
-      body: "Elkészül a tetoválás. Az egyszeri minták ezután véglegesen archívumba kerülnek.",
+      body: "Elkészül a tetoválás. Ha ez volt a minta utolsó alkalma, véglegesen lekerül a kínálatból.",
     },
   ],
 };

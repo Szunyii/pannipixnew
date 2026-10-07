@@ -4,6 +4,7 @@ import {
   type BookingEmailKind,
   adminNewBookingEmail,
   bookingEmailsFor,
+  customerConfirmedEmail,
   customerReceivedEmail,
   customerRejectedEmail,
   escapeHtml,
@@ -42,6 +43,13 @@ describe("templates", () => {
     const { text, html } = customerReceivedEmail(data);
     expect(text).toContain(`${PAYMENT_NOTE} Ha kérdésed van, válaszolj erre a levélre.`);
     expect(html).toContain(PAYMENT_NOTE);
+  });
+
+  it("tells a confirmed customer that the details, such as the exact placement, are settled by reply, as the site promises", () => {
+    const { text, html } = customerConfirmedEmail(data);
+    const note = "A részleteket, például a pontos elhelyezést, válaszlevélben egyeztetjük.";
+    expect(text).toContain(note);
+    expect(html).toContain(note);
   });
 
   it("gives the admin the customer's details with a link, and never raw HTML from the form", () => {

@@ -92,6 +92,7 @@ export function customerConfirmedEmail(d: BookingEmailData): EmailContent {
     greeting(d),
     { p: "Visszaigazolom a foglalásodat, várlak!" },
     details(d),
+    { p: "A részleteket, például a pontos elhelyezést, válaszlevélben egyeztetjük." },
     { p: "Ha mégsem tudsz jönni, kérlek, minél előbb válaszolj erre a levélre." },
     signature,
   ]);

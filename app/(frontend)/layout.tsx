@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "PANNIPIX — egyedi tetoválás és flash minták",
   description:
-    "Konceptuális, absztrakt és mikrorealista tetoválások. Egyedi tervezés, vagy időpontra foglalható flash minták a PANNIPIX kollekciókból.",
+    "Konceptuális, absztrakt és mikrorealista tetoválások. Egyedi tervezés vagy időpontra foglalható flash minták a PANNIPIX kollekciókból.",
 };
 
 export const viewport: Viewport = {

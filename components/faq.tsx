@@ -1,3 +1,4 @@
+import { PAYMENT_NOTE } from "@/lib/copy";
 import { Plus } from "./icons";
 import { container } from "./ui";
 
@@ -12,11 +13,11 @@ const faqs = [
   },
   {
     q: "Mi történik a flash mintával, miután elkészült?",
-    a: "Ez a kollekción múlik. Az egyszeri minta egy alkalom után lekerül a kínálatból, a limitált mintát a megadott számú alkalommal tetoválom, a többi bármikor foglalható.",
+    a: "Ez a kollekción múlik. Az egyszeri minta egy alkalom után lekerül a kínálatból, a limitált mintát a megadott számú alkalommal tetoválom, a korlátlanul foglalható mintát pedig bármennyiszer.",
   },
   {
     q: "Kell előre fizetnem a flash mintáért?",
-    a: "Nem. Az online foglalás nem vásárlás: most nem fizetsz semmit, a részleteket a visszaigazolásban egyeztetjük.",
+    a: `Nem. ${PAYMENT_NOTE}`,
   },
   {
     q: "Első tetoválásom lenne. Hol kezdjem?",

@@ -24,7 +24,7 @@ const sorters: Record<Sort, (a: FlashDesign, b: FlashDesign) => number> = {
 
 /** How often a design is tattooed, when every collection books by the same rule. */
 const ruleIntro: Record<BookingRule, string> = {
-  single: "Mindegyik csak egyszer kerül bőrre, utána lekerül a kollekcióból.",
+  single: "Mindegyik csak egyszer kerül bőrre, utána lekerül a kínálatból.",
   limited: "Mindegyik csak meghatározott számú alkalommal készül el.",
   unlimited: "Bármelyik többször is elkészülhet.",
 };
@@ -111,6 +111,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
   const [sort, setSort] = useState<Sort>("newest");
   const [shown, setShown] = useState(PAGE);
   const grid = useRef<HTMLDivElement>(null);
+  const allChip = useRef<HTMLButtonElement>(null);
 
   const visible = designs.filter((d) => filter === null || d.collection === filter).sort(sorters[sort]);
   const rule = sharedRule(categories);
@@ -126,6 +127,12 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
     const first = shown;
     flushSync(() => setShown((n) => n + PAGE));
     grid.current?.children[first]?.querySelector("a")?.focus();
+  };
+
+  // The empty state's "Összes minta" goes away once clicked; focus lands on the filter it switched to, not on <body>.
+  const showAll = () => {
+    flushSync(() => choose(null));
+    allChip.current?.focus();
   };
 
   return (
@@ -157,6 +164,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
             {[null, ...categories].map((c) => (
               <button
                 key={c?.id ?? "all"}
+                ref={c ? undefined : allChip}
                 type="button"
                 aria-pressed={filter === (c?.name ?? null)}
                 onClick={() => choose(c?.name ?? null)}
@@ -206,7 +214,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
             </p>
             <div className="mt-9 flex flex-wrap justify-center gap-3">
               {filter !== null && (
-                <button type="button" onClick={() => choose(null)} className={btn.outline}>
+                <button type="button" onClick={showAll} className={btn.outline}>
                   Összes minta
                 </button>
               )}

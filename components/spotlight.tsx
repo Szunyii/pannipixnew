@@ -160,9 +160,9 @@ function Detail({ design }: { design: FlashDesign }) {
             type="button"
             onClick={() => toggleFavorite(design.id)}
             aria-pressed={saved}
-            className={`${btn.outline} w-full`}
+            className={`${btn.outline} w-full aria-pressed:bg-ink aria-pressed:text-paper`}
           >
-            {/* The label stays put; aria-pressed and the filled heart carry the state. */}
+            {/* The label stays put; aria-pressed (drawn as an ink fill, like the filter chips) and the filled heart carry the state. */}
             <Heart size={18} filled={saved} />
             Mentés későbbre
           </button>

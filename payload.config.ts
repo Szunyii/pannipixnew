@@ -56,8 +56,10 @@ export default buildConfig({
     // WAL lets the site read while a booking is written; busyTimeout waits out a brief lock instead of failing.
     wal: true,
     busyTimeout: 5000,
-    // On a long-running server (Hostinger) pending migrations run once, when Payload starts.
-    prodMigrations: migrations,
+    // In production, pending migrations run once per process, when Payload initialises: on the first request that uses
+    // it, not at `next start`. Never during `next build`: if a page ever started Payload at build time, the build would
+    // fail on a missing table instead of migrating whatever database the build machine points at.
+    prodMigrations: isProductionRuntime ? migrations : undefined,
   }),
   // Without SMTP settings Payload logs each email to the console instead of sending it.
   email: process.env.SMTP_HOST

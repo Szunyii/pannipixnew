@@ -19,7 +19,14 @@ async function query(db: Db, sql: string, ...args: string[]) {
   return rows.map((row) => Object.fromEntries(columns.map((name, i) => [name, row[i]])));
 }
 
-/** Columns, indexes and foreign keys per table. Column order, SQL formatting and SQLite's own tables don't count. */
+/**
+ * What is compared, per table: each column's name, type, NOT NULL, PK and default; each index's name, whether it is
+ * unique and its columns in order (plain and unique indexes alike); each foreign key's columns and its ON UPDATE and
+ * ON DELETE actions. SQLite's own tables are left out.
+ * Not compared: the order of the columns, and details only the CREATE statement shows (CHECK, COLLATE, AUTOINCREMENT,
+ * a partial index's WHERE). Payload's SQLite builder doesn't emit those; AUTOINCREMENT only with the adapter's
+ * `autoIncrement` option, which is off.
+ */
 async function describeSchema(db: Db) {
   const tables = await query(
     db,
@@ -62,10 +69,19 @@ async function run(db: Db, direction: "up" | "down") {
 
 describe("migrations", () => {
   it("build the schema the collections describe", async () => {
-    const migrated = emptyDatabase();
-    await run(migrated, "up");
+    const db = emptyDatabase();
+    await run(db, "up");
+    const built = await describeSchema(db);
     // The test database was pushed from the collections when Payload booted.
-    expect(await describeSchema(migrated)).toEqual(await describeSchema((await getTestPayload()).db.drizzle));
+    const wanted = await describeSchema((await getTestPayload()).db.drizzle);
+    // Table by table, so a failure names its table.
+    for (const table of new Set([...Object.keys(wanted), ...Object.keys(built)])) {
+      const message = [
+        `Table "${table}" differs between the collections and the migrations (- only in the collections, + only in the migrations).`,
+        "If a collection changed, run `npm run payload migrate:create <name>`",
+      ].join(" ");
+      expect.soft(built[table], message).toEqual(wanted[table]);
+    }
   });
 
   it("roll back in reverse order and leave nothing behind", async () => {

@@ -2982,6 +2982,7 @@ EOF
 - Create: `cms/booking/public.ts`
 - Test: `tests/unit/booking-errors.test.ts`
 - Test: `tests/int/public-booking.test.ts`
+- Test: `tests/unit/public-booking-retry.test.ts`
 
 - [ ] **Step 1: A bukó tesztek megírása**
 
@@ -3097,8 +3098,22 @@ describe("website bookings", () => {
     ]);
 
     expect(results.every((r) => r.ok)).toBe(true);
-    const booked = await payload.find({ collection: "bookings", where: { design: { equals: design.id } } });
-    expect(booked.docs.map((b) => b.seat).sort()).toEqual([1, 2]);
+    const booked = await payload.find({ collection: "bookings", where: { design: { equals: design.id } }, pagination: false });
+    expect(booked.docs.map((b) => b.seat ?? 0).sort((a, b) => a - b)).toEqual([1, 2]);
+  });
+
+  it("give every seat to a crowd that asks at once, and tell the rest it sold out", async () => {
+    // More requests than MAX_ATTEMPTS: if the losers retried in lockstep, the last ones would run out of attempts.
+    const design = await createDesign(payload, (await createCategory(payload, "limited", 12)).id);
+    const slots = [];
+    for (let i = 0; i < 14; i += 1) slots.push(await createSlot(payload));
+
+    const results = await Promise.all(slots.map((s) => createPublicBooking(payload, publicInput(design.id, s.id))));
+
+    expect(results.filter((r) => r.ok)).toHaveLength(12);
+    expect(results.filter((r) => !r.ok)).toEqual(Array(2).fill({ ok: false, code: "sold_out" }));
+    const booked = await payload.find({ collection: "bookings", where: { design: { equals: design.id } }, pagination: false });
+    expect(booked.docs.map((b) => b.seat ?? 0).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   });
 
   it("let exactly one of two simultaneous requests take a slot", async () => {
@@ -3117,13 +3132,131 @@ describe("website bookings", () => {
 });
 ```
 
+`tests/unit/public-booking-retry.test.ts` (adatbázis nélkül, a `payload.create` helyett csonkkal; az újrapróbálást a meghajtó ütemezésétől függetlenül rögzíti):
+
+```ts
+import { type Payload, ValidationError } from "payload";
+import { describe, expect, it, vi } from "vitest";
+import { BookingError } from "@/cms/booking/errors";
+import { MAX_ATTEMPTS, createPublicBooking } from "@/cms/booking/public";
+import type { BookingInput } from "@/lib/booking-input";
+
+const input: BookingInput = {
+  designId: 12,
+  slotId: 4,
+  name: "Teszt Elek",
+  email: "teszt.elek@example.com",
+  phone: "+36 30 123 4567",
+  placement: "alkar",
+  note: "",
+  website: "",
+};
+
+/** What Payload throws when a unique index turns the insert away (drizzle's handleUpsertError). */
+const uniqueViolation = (path: string) =>
+  new ValidationError({ collection: "bookings", errors: [{ message: "Value must be unique", path }] });
+const seatConflict = () => uniqueViolation("design_id");
+
+/** A stand-in for Payload whose create fails or succeeds in the given order. */
+function fakePayload(...outcomes: unknown[]) {
+  const create = vi.fn();
+  for (const outcome of outcomes) {
+    if (outcome instanceof Error) create.mockRejectedValueOnce(outcome);
+    else create.mockResolvedValueOnce(outcome);
+  }
+  const error = vi.fn();
+  return { payload: { create, logger: { error } } as unknown as Payload, create, error };
+}
+
+// The int tests reach the retry only through how libsql interleaves Promise.all; these pin it without a database.
+describe("createPublicBooking", () => {
+  it("tries again after losing a seat race and books the next seat", async () => {
+    const { payload, create, error } = fakePayload(seatConflict(), { id: 7 });
+    expect(await createPublicBooking(payload, input)).toEqual({ ok: true, bookingId: 7 });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("reports sold out when the retry finds no seat left", async () => {
+    const { payload, create } = fakePayload(seatConflict(), new BookingError("sold_out"));
+    expect(await createPublicBooking(payload, input)).toEqual({ ok: false, code: "sold_out" });
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps trying while other bookings keep taking the seat it picked", async () => {
+    const lost = Array.from({ length: MAX_ATTEMPTS - 1 }, seatConflict);
+    const { payload, create } = fakePayload(...lost, { id: 9 });
+    expect(await createPublicBooking(payload, input)).toEqual({ ok: true, bookingId: 9 });
+    expect(create).toHaveBeenCalledTimes(MAX_ATTEMPTS);
+  });
+
+  it("gives up and logs after MAX_ATTEMPTS, so a seat that never frees up can't loop forever", async () => {
+    const { payload, create, error } = fakePayload();
+    create.mockRejectedValue(seatConflict());
+    expect(await createPublicBooking(payload, input)).toEqual({ ok: false, code: "unknown" });
+    expect(create).toHaveBeenCalledTimes(MAX_ATTEMPTS);
+    expect(error).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets waiting work run before it retries, so the losers of one race don't retry in lockstep", async () => {
+    let waitingWorkRan = false;
+    let ranBeforeRetry: boolean | undefined;
+    const { payload, create } = fakePayload();
+    create
+      .mockImplementationOnce(async () => {
+        // Another request's continuation, queued on the event loop while this attempt runs.
+        setTimeout(() => (waitingWorkRan = true), 0);
+        throw seatConflict();
+      })
+      .mockImplementationOnce(async () => {
+        ranBeforeRetry = waitingWorkRan;
+        return { id: 7 };
+      });
+    expect(await createPublicBooking(payload, input)).toEqual({ ok: true, bookingId: 7 });
+    expect(ranBeforeRetry).toBe(true);
+  });
+
+  it.each([
+    ["a slot someone else just took", uniqueViolation("slot_id"), "slot_taken"],
+    ["a sold-out design", new BookingError("sold_out"), "sold_out"],
+    ["a hidden design", new BookingError("design_unavailable"), "design_unavailable"],
+    ["a past slot", new BookingError("slot_past"), "slot_past"],
+  ])("answers %s at once, without retrying", async (_what, err, code) => {
+    const { payload, create, error } = fakePayload(err);
+    expect(await createPublicBooking(payload, input)).toEqual({ ok: false, code });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("logs an unexpected failure and does not retry it", async () => {
+    const { payload, create, error } = fakePayload(new Error("SQLITE_IOERR"));
+    expect(await createPublicBooking(payload, input)).toEqual({ ok: false, code: "unknown" });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends every attempt as a pending website booking", async () => {
+    const { payload, create } = fakePayload(seatConflict(), { id: 7 });
+    await createPublicBooking(payload, input);
+    for (const [args] of create.mock.calls) {
+      expect(args).toMatchObject({
+        collection: "bookings",
+        context: { publicBooking: true },
+        overrideAccess: true,
+        data: { design: 12, slot: 4, status: "pending", note: null, adultConfirmed: true },
+      });
+    }
+  });
+});
+```
+
 - [ ] **Step 2: Futtasd, és nézd meg, hogy elbukik**
 
 ```bash
-npx vitest run tests/unit/booking-errors.test.ts tests/int/public-booking.test.ts
+npx vitest run tests/unit/booking-errors.test.ts tests/unit/public-booking-retry.test.ts tests/int/public-booking.test.ts
 ```
 
-Expected: az `errors` teszt PASS (a Task 8-ban már elkészült), a `public-booking` FAIL: `Cannot find package '@/cms/booking/public'` (a modul még nem létezik).
+Expected: az `errors` teszt PASS (a Task 8-ban már elkészült), a `public-booking` és a `public-booking-retry` FAIL: `Cannot find package '@/cms/booking/public'` (a modul még nem létezik).
 
 - [ ] **Step 3: `cms/booking/public.ts`**
 
@@ -3134,16 +3267,31 @@ import { type PublicBookingCode, classifyBookingError } from "./errors";
 
 export type PublicBookingResult = { ok: true; bookingId: number } | { ok: false; code: PublicBookingCode };
 
-const PUBLIC_CODES: readonly string[] = ["design_unavailable", "sold_out", "slot_taken", "slot_past"];
-const MAX_ATTEMPTS = 3;
+const PUBLIC_CODES = ["design_unavailable", "sold_out", "slot_taken", "slot_past"] as const satisfies readonly PublicBookingCode[];
+const isPublicCode = (code: string): code is (typeof PUBLIC_CODES)[number] =>
+  (PUBLIC_CODES as readonly string[]).includes(code);
+
+/**
+ * Each lost seat race means another booking for the design just went through, so the next attempt sees it
+ * and takes the next seat or finds the design sold out. The cap only stops a booking that can't make progress,
+ * e.g. a seat held by a row the hook doesn't count as active.
+ */
+export const MAX_ATTEMPTS = 10;
+
+/**
+ * Waits a few random milliseconds before a retry. Yielding to the event loop is what keeps the losers of one race
+ * from picking the same seat again together; the randomness spreads them out when queries really run async.
+ */
+const pause = (attempt: number) => new Promise<void>((resolve) => setTimeout(resolve, Math.random() * 5 * attempt));
 
 /**
  * Creates a booking from the website form. Simultaneous requests for one design all pick its lowest
- * free seat and the unique index lets one through; the others retry, and then take the next seat or
- * learn the design sold out.
+ * free seat and the unique index lets one through; the others pause a few random milliseconds and try
+ * again, so they take the next free seat or learn the design sold out. A request that loses
+ * MAX_ATTEMPTS seat races in a row gives up with "unknown", and the failure is logged.
  */
 export async function createPublicBooking(payload: Payload, input: BookingInput): Promise<PublicBookingResult> {
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; ; attempt += 1) {
     try {
       const booking = await payload.create({
         collection: "bookings",
@@ -3164,28 +3312,30 @@ export async function createPublicBooking(payload: Payload, input: BookingInput)
       return { ok: true, bookingId: booking.id };
     } catch (err) {
       const code = classifyBookingError(err);
-      if (code === "seat_conflict" && attempt < MAX_ATTEMPTS) continue;
-      if (PUBLIC_CODES.includes(code)) return { ok: false, code: code as PublicBookingCode };
-      payload.logger.error({ err, msg: "Website booking failed" });
+      if (code === "seat_conflict" && attempt < MAX_ATTEMPTS) {
+        await pause(attempt);
+        continue;
+      }
+      if (isPublicCode(code)) return { ok: false, code };
+      payload.logger.error({ err, attempts: attempt, msg: "Website booking failed" });
       return { ok: false, code: "unknown" };
     }
   }
-  return { ok: false, code: "unknown" };
 }
 ```
 
 - [ ] **Step 4: Futtasd, most át kell mennie**
 
 ```bash
-npx vitest run tests/unit/booking-errors.test.ts tests/int/public-booking.test.ts
+npx vitest run tests/unit/booking-errors.test.ts tests/unit/public-booking-retry.test.ts tests/int/public-booking.test.ts
 ```
 
-Expected: PASS (10 teszt). Ha a két egyidejűségi teszt valamelyike `unknown` kódot ad, nézd meg a naplóban az `err` tartalmát. Ha a `data.errors[0].path` más (pl. `bookings_design_seat_idx`), vedd fel a `classifyBookingError` megfelelő ágába, és bővítsd vele a `booking-errors` egységtesztet.
+Expected: PASS (22 teszt). Ha a két egyidejűségi teszt valamelyike `unknown` kódot ad, nézd meg a naplóban az `err` tartalmát. Ha a `data.errors[0].path` más (pl. `bookings_design_seat_idx`), vedd fel a `classifyBookingError` megfelelő ágába, és bővítsd vele a `booking-errors` egységtesztet.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cms/booking/public.ts tests/unit/booking-errors.test.ts tests/int/public-booking.test.ts
+git add cms/booking/public.ts tests/unit/booking-errors.test.ts tests/unit/public-booking-retry.test.ts tests/int/public-booking.test.ts
 git commit -m "$(cat <<'EOF'
 feat: website bookings that retry a lost seat race
 

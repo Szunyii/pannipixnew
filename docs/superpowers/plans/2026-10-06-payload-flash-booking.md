@@ -6738,9 +6738,12 @@ process.exit(0);
 
 - [ ] **Step 2: Futtatás tiszta adatbázison**
 
+A seed egy ideiglenes mappába dolgozik; a fejlesztői `.data/` adatbázishoz nem nyúlunk. Az üres `SMTP_HOST` miatt levél sem mehet ki.
+
 ```bash
-rm -rf .data && npm run seed
-sqlite3 .data/pannipix.db "select count(*) from categories; select count(*) from designs; select count(*) from slots; select status from bookings;"
+QA=$(mktemp -d)
+DATABASE_URL="file:$QA/pannipix.db" MEDIA_DIR="$QA/media" SMTP_HOST= npm run seed
+sqlite3 "$QA/pannipix.db" "select count(*) from categories; select count(*) from designs; select count(*) from slots; select status from bookings;"
 ```
 
 Expected: a napló végén `Seed done: 3 collections, 8 designs, 12 open slots.` (a nyitott időpontok száma 12 körül mozog, a héten belüli naptól függően). Az SQL kimenete: `3`, `8`, a nyitott időpontok száma + 1, majd `completed`.
@@ -6748,7 +6751,7 @@ Expected: a napló végén `Seed done: 3 collections, 8 designs, 12 open slots.`
 - [ ] **Step 3: A seed második futtatása kihagyja az üres adatbázisra szánt feltöltést**
 
 ```bash
-npm run seed 2>&1 | grep "Seed skipped"
+DATABASE_URL="file:$QA/pannipix.db" MEDIA_DIR="$QA/media" SMTP_HOST= npm run seed 2>&1 | grep "Seed skipped"
 ```
 
 Expected: `Seed skipped: the database already has collections.`
@@ -6776,8 +6779,11 @@ EOF
 
 - [ ] **Step 1: A kezdő migráció generálása**
 
+A parancs elindítja a Payloadot, ezért ez is ideiglenes adatbázissal fut; a fejlesztői `.data/`-hoz nem nyúlunk.
+
 ```bash
-npm run payload migrate:create initial
+QA=$(mktemp -d)
+DATABASE_URL="file:$QA/migrate.db" MEDIA_DIR="$QA/media" npm run payload migrate:create initial
 ls migrations
 ```
 
@@ -6808,16 +6814,20 @@ Expected: sikeres build. A `/` útvonal a listában dinamikus (`ƒ`), nem statik
 
 - [ ] **Step 4: Éles indítás friss adatbázison (a migráció próbája)**
 
+Ideiglenes mappában, saját folyamatcsoportban (a `set -m` miatt `bash`-ben); a végén csak ezt a csoportot állítjuk le.
+
 ```bash
+bash -c '
 set -m
-DATABASE_URL=file:./.data/prod-check.db MEDIA_DIR=./.data/prod-check-media node_modules/.bin/next start --port 3211 > /tmp/pannipix-prod.log 2>&1 &
+QA=$(mktemp -d)
+DATABASE_URL="file:$QA/prod-check.db" MEDIA_DIR="$QA/media" SMTP_HOST= node_modules/.bin/next start --port 3211 > "$QA/prod.log" 2>&1 &
 PID=$!
 for i in $(seq 1 60); do curl -s -o /dev/null http://localhost:3211/ && break; sleep 1; done
 curl -s -o /dev/null -w "front %{http_code}\n" http://localhost:3211/
 curl -s -L -o /dev/null -w "admin %{http_code}\n" http://localhost:3211/admin
-sqlite3 .data/prod-check.db ".tables"
+sqlite3 "$QA/prod-check.db" ".tables"
 kill -TERM -- -"$PID"
-rm -rf .data/prod-check.db* .data/prod-check-media
+'
 ```
 
 Expected: `front 200`, `admin 200`. A táblák között szerepel a `bookings`, `slots`, `designs`, `categories` és a `payload_migrations`. A friss adatbázisban nincs minta, ezért az oldal flash szekciója az üres állapotot mutatja. Ez rendben van.
@@ -6941,7 +6951,7 @@ Expected: minden zöld, a tesztösszesítőben 0 failed.
 
 - [ ] **Step 2: Böngészős végigjátszás** (a `run` skill segítségével, vagy kézzel)
 
-Előkészítés: `rm -rf .data && npm run seed`, majd a dev szerver a 3210-es porton, saját folyamatcsoportban (lásd Task 2, Step 9). Az URL-ek: `http://localhost:3210/` és `http://localhost:3210/admin`. A végén csak ezt a folyamatcsoportot állítsd le.
+Előkészítés: ideiglenes adatbázis, a fejlesztői `.data/`-hoz nem nyúlunk. `QA=$(mktemp -d)`, majd `DATABASE_URL="file:$QA/pannipix.db" MEDIA_DIR="$QA/media" SMTP_HOST= npm run seed`, és ugyanezekkel a változókkal a dev szerver a 3210-es porton, saját folyamatcsoportban (lásd Task 2, Step 9). Az URL-ek: `http://localhost:3210/` és `http://localhost:3210/admin`. A végén csak ezt a folyamatcsoportot állítsd le.
 
 Admin, asztali nézet (1280 px):
 1. `/admin` → admin fiók létrehozása → a menüben a *Foglalás* (Foglalások, Időpontok), a *Flash* (Flash minták, Kollekciók, Képek) és a *Beállítások* (Adminok) csoport látszik, magyarul.

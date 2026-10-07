@@ -128,7 +128,7 @@ Nyilvános foglalás kizárólag a server actionön keresztül jöhet létre (Lo
 
 - **Aktív**: `pending`, `confirmed`, `completed`. Leköti az időpontot és a minta egy alkalmát.
 - **Felszabadított**: `rejected`, `cancelled`. A hook `slot = null` és `seat = null` értéket állít be; a pillanatképek megmaradnak.
-- Felszabadított foglalás nem állítható vissza aktívra. Hibaüzenet: „Elutasított vagy lemondott foglalás nem aktiválható újra — hozz létre új foglalást.” A két felszabadított állapot között szabad a váltás.
+- Felszabadított foglalás nem állítható vissza aktívra. Hibaüzenet: „Elutasított vagy lemondott foglalás nem aktiválható újra – hozz létre új foglalást.” A két felszabadított állapot között szabad a váltás.
 - Új foglalás nem jöhet létre eleve elutasított vagy lemondott állapotban. Hibaüzenet: „Új foglalás csak Függőben, Jóváhagyva vagy Elkészült állapotban hozható létre.”
 
 ### 6.2 Foglalhatóság
@@ -143,8 +143,8 @@ Nyilvános foglalás kizárólag a server actionön keresztül jöhet létre (Lo
 Nyilvános és admin által felvett foglalásnál ugyanez fut; az eltérések jelölve.
 
 1. Betölti a mintát a kollekciójával. Nyilvános foglalásnál a minta legyen `visible`.
-2. Betölti az időpontot. Nyilvános foglalásnál legyen jövőbeli. Ha az időpontnak már van aktív foglalása, barátságos hibát ad. A végső garancia az egyedi index.
-3. **Egyetlen lekérdezéssel** beolvassa a minta aktív foglalásait a sorszámukkal. Ebből számolja az `activeCount`-ot és az 1..limit közötti legkisebb szabad sorszámot. Ha nincs ilyen: „Ez a minta már betelt.”
+2. **Egyetlen lekérdezéssel** beolvassa a minta aktív foglalásait a sorszámukkal. Ebből számolja az `activeCount`-ot és az 1..limit közötti legkisebb szabad sorszámot. Ha nincs ilyen: „Ez a minta már betelt.” Ez a lépés megelőzi az időpontét, mert egy betelt mintánál az ügyfélnek úgyis másikat kell választania.
+3. Betölti az időpontot. Nyilvános foglalásnál legyen jövőbeli. Ha az időpontnak már van aktív foglalása, barátságos hibát ad. A végső garancia az egyedi index.
 4. Kitölti a pillanatképeket és a `title`-t. Nyilvános foglalás állapota mindig `pending`.
 
 ### 6.4 Egyidejűség
@@ -153,6 +153,7 @@ Nyilvános és admin által felvett foglalásnál ugyanez fut; az eltérések je
 - **Két kérés egyszerre ugyanarra az időpontra:** az egyik beszúrás `SQLITE_CONSTRAINT_UNIQUE` hibát kap. A Payload ezt `ValidationError`-rá alakítja, a hibás mező útvonalával. Az ügyfél ezt látja: „Ezt az időpontot közben lefoglalták, válassz másikat.”
 - **Két kérés egyszerre ugyanarra a sorszámra:** az egyik elbukik, és a server action **legfeljebb kétszer** újrapróbálja. Ekkor már friss állapotot lát, tehát vagy új sorszámot kap, vagy „betelt” üzenetet.
 - Az `activeCount` és a szabad sorszám ugyanabból az olvasásból jön, ezért a limit nem léphető túl. Aki régebbi állapotot lát, ugyanazt a sorszámot választja, mint a másik kérés, és az indexen elbukik.
+- **Ismert szélső eset:** ha egy kérés még korlátlannak látja a kollekciót (sorszám nélkül), és közben az admin limitáltra állítja, ez a foglalás a régi szabály szerint jön létre. Ez megfelel a 6.2-nek: a szabályváltás a meglévő és a folyamatban lévő foglalásokat nem érinti.
 
 ### 6.5 Admin módosítások (Bookings `beforeChange`, frissítés)
 

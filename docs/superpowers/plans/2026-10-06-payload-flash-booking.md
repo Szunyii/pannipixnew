@@ -2581,11 +2581,23 @@ export class BookingError extends ValidationError {
 export type PublicBookingCode = "design_unavailable" | "sold_out" | "slot_taken" | "slot_past" | "unknown";
 
 /**
+ * A BookingError, also when it comes from a second copy of this module: hot reload can load the class twice, and
+ * `instanceof` then fails. A sold-out design would read as a lost seat race, be retried and end up "unknown".
+ */
+function isBookingError(err: unknown): err is BookingError {
+  if (err instanceof BookingError) return true;
+  const code = (err as { code?: unknown } | null)?.code;
+  return (
+    err instanceof Error && err.name === "BookingError" && typeof code === "string" && Object.hasOwn(BOOKING_MESSAGES, code)
+  );
+}
+
+/**
  * Turns a failed create into a booking error code. Besides our own rules, SQLite's unique indexes
  * reject the loser of a race: on the slot (`slot_id`) or on the design's seat (`design_id`).
  */
 export function classifyBookingError(err: unknown): BookingErrorCode | "seat_conflict" | "unknown" {
-  if (err instanceof BookingError) return err.code;
+  if (isBookingError(err)) return err.code;
   const path = (err as { data?: { errors?: { path?: string }[] } } | null)?.data?.errors?.[0]?.path;
   if (path === "slot" || path === "slot_id") return "slot_taken";
   if (path === "design" || path === "design_id" || path === "seat") return "seat_conflict";
@@ -3001,7 +3013,7 @@ EOF
 
 ```ts
 import { ValidationError } from "payload";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BookingError, classifyBookingError } from "@/cms/booking/errors";
 
 const uniqueViolation = (path: string) =>
@@ -3010,6 +3022,22 @@ const uniqueViolation = (path: string) =>
 describe("classifyBookingError", () => {
   it("passes our own rule codes through", () => {
     expect(classifyBookingError(new BookingError("sold_out"))).toBe("sold_out");
+  });
+
+  it("passes the code through from a second copy of the module, as hot reload loads one", async () => {
+    vi.resetModules();
+    const copy = await import("@/cms/booking/errors");
+    const soldOut = new copy.BookingError("sold_out");
+    expect(soldOut).not.toBeInstanceOf(BookingError);
+    // Not a lost seat race (its path is "design"): that would be retried and end up "unknown".
+    expect(classifyBookingError(soldOut)).toBe("sold_out");
+    expect(classifyBookingError(new copy.BookingError("design_unavailable"))).toBe("design_unavailable");
+  });
+
+  it("doesn't take a code it doesn't know from an error that only has the name", () => {
+    const lookalike = Object.assign(uniqueViolation("design_id"), { name: "BookingError", code: "not_a_code" });
+    expect(classifyBookingError(lookalike)).toBe("seat_conflict");
+    expect(classifyBookingError({ name: "BookingError", code: "sold_out" })).toBe("unknown");
   });
 
   it("reads a lost race on the slot as a taken slot", () => {
@@ -3346,7 +3374,7 @@ export async function createPublicBooking(payload: Payload, input: BookingInput)
 npx vitest run tests/unit/booking-errors.test.ts tests/unit/public-booking-retry.test.ts tests/int/public-booking.test.ts
 ```
 
-Expected: PASS (22 teszt). Ha a két egyidejűségi teszt valamelyike `unknown` kódot ad, nézd meg a naplóban az `err` tartalmát. Ha a `data.errors[0].path` más (pl. `bookings_design_seat_idx`), vedd fel a `classifyBookingError` megfelelő ágába, és bővítsd vele a `booking-errors` egységtesztet.
+Expected: PASS (24 teszt). Ha a két egyidejűségi teszt valamelyike `unknown` kódot ad, nézd meg a naplóban az `err` tartalmát. Ha a `data.errors[0].path` más (pl. `bookings_design_seat_idx`), vedd fel a `classifyBookingError` megfelelő ágába, és bővítsd vele a `booking-errors` egységtesztet.
 
 - [ ] **Step 5: Commit**
 
@@ -4485,6 +4513,7 @@ const h = vi.hoisted(() => ({
   warn: vi.fn(),
   getPayload: vi.fn(),
   create: vi.fn(),
+  refresh: vi.fn(),
   order: [] as string[],
 }));
 
@@ -4508,6 +4537,8 @@ vi.mock("@/cms/booking/public", () => ({
 }));
 // The real config would load Payload's adapters; the action only hands it to the mocked getPayload.
 vi.mock("@payload-config", () => ({ default: {} }));
+// refresh() only works inside a real Server Action request.
+vi.mock("next/cache", () => ({ refresh: () => h.refresh() }));
 
 const valid = () => {
   const f = new FormData();
@@ -4528,6 +4559,7 @@ beforeEach(() => {
   h.xff = null;
   h.order.length = 0;
   h.warn.mockReset();
+  h.refresh.mockReset();
   h.create.mockReset().mockResolvedValue({ ok: true, bookingId: 1 });
   h.getPayload.mockReset().mockResolvedValue({ logger: { warn: h.warn, error: vi.fn() } });
 });
@@ -4541,6 +4573,50 @@ afterEach(() => {
 });
 
 describe("bookFlash", () => {
+  it.each([
+    ["a booking that went through", { ok: true, bookingId: 3 }, { status: "success" }],
+    ["a sold-out design", { ok: false, code: "sold_out" }, { status: "error", code: "sold_out" }],
+    ["a design taken off the site", { ok: false, code: "design_unavailable" }, { status: "error", code: "design_unavailable" }],
+  ])("re-renders the page in the same response after %s", async (_what, outcome, answer) => {
+    const bookFlash = await load();
+    h.create.mockResolvedValue(outcome);
+    expect(await bookFlash(valid())).toEqual(answer);
+    expect(h.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["a slot taken meanwhile", "slot_taken"],
+    ["a slot that has passed", "slot_past"],
+    ["an unknown failure", "unknown"],
+  ])("leaves the page as it is after %s", async (_what, code) => {
+    const bookFlash = await load();
+    h.create.mockResolvedValue({ ok: false, code });
+    expect(await bookFlash(valid())).toEqual({ status: "error", code });
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+
+  it("leaves the page as it is when nothing was booked: invalid input, the limit, a honeypot, Payload down", async () => {
+    const bookFlash = await load();
+    const bad = valid();
+    bad.set("email", "anna@");
+    expect(await bookFlash(bad)).toMatchObject({ status: "error", code: "invalid" });
+
+    const bot = valid();
+    bot.set("website", "spam.example");
+    expect(await bookFlash(bot)).toEqual({ status: "success" });
+
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    h.getPayload.mockRejectedValueOnce(new Error("db down"));
+    expect(await bookFlash(valid())).toEqual({ status: "error", code: "unknown" });
+    expect(h.refresh).not.toHaveBeenCalled();
+
+    h.xff = "203.0.113.9";
+    for (let i = 0; i < 3; i += 1) await bookFlash(valid());
+    expect(h.refresh).toHaveBeenCalledTimes(3);
+    expect(await bookFlash(valid())).toEqual({ status: "error", code: "rate_limited" });
+    expect(h.refresh).toHaveBeenCalledTimes(3);
+  });
+
   it("refuses the 4th booking of one visitor, however the visitor decorates the header", async () => {
     const bookFlash = await load();
     const results = [];
@@ -4725,6 +4801,7 @@ Expected: FAIL, az `@/app/(frontend)/actions` modul még nem létezik.
 "use server";
 
 import config from "@payload-config";
+import { refresh } from "next/cache";
 import { headers } from "next/headers";
 import { type Payload, getPayload } from "payload";
 import type { PublicBookingCode } from "@/cms/booking/errors";
@@ -4782,7 +4859,7 @@ export async function bookFlash(formData: FormData): Promise<BookFlashState> {
     console.error("Booking form: Payload failed to start.", err);
     return { status: "error", code: "unknown" };
   }
-  // Bots fill the hidden field: tell them it worked and store nothing.
+  // Bots fill the hidden field: tell them it worked and store nothing (so there's nothing to re-render either).
   if (parsed.data.website) {
     payload.logger.warn("Booking form honeypot filled in; nothing stored.");
     return { status: "success" };
@@ -4801,13 +4878,19 @@ export async function bookFlash(formData: FormData): Promise<BookFlashState> {
   if (!result.ok) {
     // Only bookings that went through count against the limit.
     if (address) limiter.release(address);
+    // The design can't be booked any more: re-render the page too, so the cards and the spotlight stop offering it.
+    if (result.code === "sold_out" || result.code === "design_unavailable") refresh();
     return { status: "error", code: result.code };
   }
+  // The response then carries the re-rendered page with the new availability, together with the answer: the page is
+  // up to date by the time the dialog says "done", and no second request is needed. Next applies it as a push
+  // navigation, so with a #hash in the address (left by an in-page link) Back first returns to that hash.
+  refresh();
   return { status: "success" };
 }
 ```
 
-Futtasd a tesztet: `npx vitest run tests/unit/book-flash.test.ts`. Expected: PASS (27 teszt).
+Futtasd a tesztet: `npx vitest run tests/unit/book-flash.test.ts`. Expected: PASS (34 teszt).
 
 - [ ] **Step 11: Lint, typecheck, teljes tesztkészlet**
 
@@ -4902,15 +4985,19 @@ export function ruleSummary(categories: readonly Pick<FlashCategory, "rule">[]) 
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import type { FlashDesign } from "./data";
 
 type Store = {
   favorites: Set<number>;
   featured: number | null;
-  /** The design whose booking dialog is open, if any. */
-  bookingFor: number | null;
+  /**
+   * The design whose booking dialog is open, as it was when the dialog opened. The dialog shows this copy until it
+   * closes, so a refresh that changes the design or takes it off the page doesn't change or close it.
+   */
+  bookingFor: FlashDesign | null;
   toggleFavorite: (id: number) => void;
   feature: (id: number) => void;
-  openBooking: (id: number) => void;
+  openBooking: (design: FlashDesign) => void;
   closeBooking: () => void;
 };
 
@@ -4933,11 +5020,11 @@ export function StoreProvider({
 }) {
   const [favorites, setFavorites] = useState<Set<number>>(() => new Set());
   const [featured, setFeatured] = useState(initialFeatured);
-  const [bookingFor, setBookingFor] = useState<number | null>(null);
+  const [bookingFor, setBookingFor] = useState<FlashDesign | null>(null);
 
   const toggleFavorite = useCallback((id: number) => setFavorites((s) => toggled(s, id)), []);
   const feature = useCallback((id: number) => setFeatured(id), []);
-  const openBooking = useCallback((id: number) => setBookingFor(id), []);
+  const openBooking = useCallback((design: FlashDesign) => setBookingFor(design), []);
   const closeBooking = useCallback(() => setBookingFor(null), []);
 
   const value = useMemo(
@@ -5012,7 +5099,7 @@ const sorters: Record<Sort, (a: FlashDesign, b: FlashDesign) => number> = {
 
 /** How often a design is tattooed, when every collection books by the same rule. */
 const ruleIntro: Record<BookingRule, string> = {
-  single: "Mindegyik csak egyszer kerül bőrre, utána lekerül a kollekcióból.",
+  single: "Mindegyik csak egyszer kerül bőrre, utána lekerül a kínálatból.",
   limited: "Mindegyik csak meghatározott számú alkalommal készül el.",
   unlimited: "Bármelyik többször is elkészülhet.",
 };
@@ -5081,7 +5168,7 @@ function FlashCard({ design }: { design: FlashDesign }) {
         {!soldOut && (
           <button
             type="button"
-            onClick={() => openBooking(design.id)}
+            onClick={() => openBooking(design)}
             aria-label={`${name} – időpontfoglalás`}
             className="grid size-11 shrink-0 place-items-center rounded-[6px] border border-hairline bg-white transition-[background-color,border-color,color,scale] duration-300 hover:border-ink hover:bg-ink hover:text-paper active:scale-90 active:duration-75"
           >
@@ -5099,6 +5186,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
   const [sort, setSort] = useState<Sort>("newest");
   const [shown, setShown] = useState(PAGE);
   const grid = useRef<HTMLDivElement>(null);
+  const allChip = useRef<HTMLButtonElement>(null);
 
   const visible = designs.filter((d) => filter === null || d.collection === filter).sort(sorters[sort]);
   const rule = sharedRule(categories);
@@ -5114,6 +5202,12 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
     const first = shown;
     flushSync(() => setShown((n) => n + PAGE));
     grid.current?.children[first]?.querySelector("a")?.focus();
+  };
+
+  // The empty state's "Összes minta" goes away once clicked; focus lands on the filter it switched to, not on <body>.
+  const showAll = () => {
+    flushSync(() => choose(null));
+    allChip.current?.focus();
   };
 
   return (
@@ -5145,6 +5239,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
             {[null, ...categories].map((c) => (
               <button
                 key={c?.id ?? "all"}
+                ref={c ? undefined : allChip}
                 type="button"
                 aria-pressed={filter === (c?.name ?? null)}
                 onClick={() => choose(c?.name ?? null)}
@@ -5194,7 +5289,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
             </p>
             <div className="mt-9 flex flex-wrap justify-center gap-3">
               {filter !== null && (
-                <button type="button" onClick={() => choose(null)} className={btn.outline}>
+                <button type="button" onClick={showAll} className={btn.outline}>
                   Összes minta
                 </button>
               )}
@@ -5375,7 +5470,7 @@ function Detail({ design }: { design: FlashDesign }) {
               Hasonló egyedi tervet kérek <Arrow />
             </a>
           ) : (
-            <button type="button" onClick={() => openBooking(design.id)} className={`${btn.primary} w-full justify-between`}>
+            <button type="button" onClick={() => openBooking(design)} className={`${btn.primary} w-full justify-between`}>
               Időpontot foglalok <Arrow />
             </button>
           )}
@@ -5383,9 +5478,9 @@ function Detail({ design }: { design: FlashDesign }) {
             type="button"
             onClick={() => toggleFavorite(design.id)}
             aria-pressed={saved}
-            className={`${btn.outline} w-full`}
+            className={`${btn.outline} w-full aria-pressed:bg-ink aria-pressed:text-paper`}
           >
-            {/* The label stays put; aria-pressed and the filled heart carry the state. */}
+            {/* The label stays put; aria-pressed (drawn as an ink fill, like the filter chips) and the filled heart carry the state. */}
             <Heart size={18} filled={saved} />
             Mentés későbbre
           </button>
@@ -5594,7 +5689,7 @@ EOF
 "use client";
 
 import Image from "next/image";
-import { unstable_isUnrecognizedActionError, useRouter } from "next/navigation";
+import { unstable_isUnrecognizedActionError } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { type BookFlashState, bookFlash, getOpenSlots } from "@/app/(frontend)/actions";
 import { PLACEMENTS } from "@/lib/booking-input";
@@ -5605,7 +5700,8 @@ import { Check, ChevronDown, ChevronLeft, Close } from "./icons";
 import { useStore } from "./store";
 import { Arrow, btn } from "./ui";
 
-type Step = "slot" | "details" | "done";
+// "unavailable": the design sold out or was taken down while the dialog was open, so the booking can't go on.
+type Step = "slot" | "details" | "done" | "unavailable";
 // "outdated": the site was redeployed while the page was open, so its server actions no longer exist.
 type ErrorCode = Extract<BookFlashState, { status: "error" }>["code"] | "outdated";
 type Result = BookFlashState | { status: "error"; code: "outdated" };
@@ -5657,10 +5753,7 @@ function TextField({
   );
 }
 
-function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => void }) {
-  const router = useRouter();
-  // Keep the header as it was when the dialog opened, even after the page refreshes availability.
-  const [snapshot] = useState(design);
+function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleId: string; onClose: () => void }) {
   const [step, setStep] = useState<Step>("slot");
   const [days, setDays] = useState<SlotDay[] | null>(null);
   const [loadError, setLoadError] = useState<"failed" | "outdated" | null>(null);
@@ -5668,14 +5761,22 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
   const [notice, setNotice] = useState<string | null>(null);
   const [result, setResult] = useState<Result>({ status: "idle" });
   const [pending, startTransition] = useTransition();
+  // Ids from useId, never fixed ones: a fixed id could clash with one elsewhere on the page.
   const placementId = useId();
   const noteId = useId();
-  const headings = {
-    slot: useRef<HTMLHeadingElement>(null),
-    details: useRef<HTMLHeadingElement>(null),
-    done: useRef<HTMLHeadingElement>(null),
-  };
-  const mounted = useRef(false);
+  const adultErrorId = useId();
+  const slotStepId = useId();
+  const detailsStepId = useId();
+  const doneId = useId();
+  const unavailableId = useId();
+  const slotHeading = useRef<HTMLHeadingElement>(null);
+  const detailsHeading = useRef<HTMLHeadingElement>(null);
+  const doneHeading = useRef<HTMLHeadingElement>(null);
+  const unavailableHeading = useRef<HTMLHeadingElement>(null);
+  // The step whose heading has focus. The first step opens with focus where the dialog put it; tracking the step
+  // (not a "mounted" flag) also keeps Strict Mode's second effect run from moving it.
+  const focusedStep = useRef<Step>("slot");
+  const form = useRef<HTMLFormElement>(null);
 
   const loadSlots = useCallback(() => {
     getOpenSlots().then(
@@ -5691,15 +5792,22 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
 
   // Move focus to the new step's heading, so keyboard and screen reader users follow along.
   useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
+    if (focusedStep.current === step) return;
+    focusedStep.current = step;
+    const headings = { slot: slotHeading, details: detailsHeading, done: doneHeading, unavailable: unavailableHeading };
     headings[step].current?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
+  // Like the browser's own checks: when the server rejects fields, focus the first one it marked.
+  useEffect(() => {
+    if (result.status === "error" && result.code === "invalid") {
+      form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+    }
+  }, [result]);
+
   function retry() {
+    // The button gives way to the loading text; keep focus in the step instead of losing it to <body>.
+    slotHeading.current?.focus();
     setLoadError(null);
     setDays(null);
     loadSlots();
@@ -5707,7 +5815,11 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // The submit button stays enabled while sending (see there), so a second press ends here.
+    if (pending) return;
     const formData = new FormData(event.currentTarget);
+    // The old answer goes while sending, so its alert comes back, and is read again, even when the new one is the same.
+    setResult({ status: "idle" });
     startTransition(async () => {
       // A rejected action (dropped connection, redeploy, server error) must not reach the page's error boundary:
       // the visitor keeps the form and gets a message instead.
@@ -5717,11 +5829,25 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
       } catch (err) {
         next = { status: "error", code: unstable_isUnrecognizedActionError(err) ? "outdated" : "unknown" };
       }
+      const end =
+        next.status === "success"
+          ? "done"
+          : next.status === "error" && (next.code === "sold_out" || next.code === "design_unavailable")
+            ? "unavailable"
+            : null;
+      if (end) {
+        // The action's response also re-rendered the page (bookFlash calls refresh()), and the router commits that in
+        // this transition. Updates after an await only join it when wrapped again: then this step shows up together
+        // with the new availability, so a button the booking takes away is already gone when the visitor can close.
+        const outcome = next;
+        startTransition(() => {
+          setResult(outcome);
+          setStep(end);
+        });
+        return;
+      }
       setResult(next);
-      if (next.status === "success") {
-        setStep("done");
-        router.refresh();
-      } else if (next.status === "error" && (next.code === "slot_taken" || next.code === "slot_past")) {
+      if (next.status === "error" && (next.code === "slot_taken" || next.code === "slot_past")) {
         setNotice(ERROR_TEXT[next.code]);
         setSlot(null);
         setDays(null);
@@ -5731,68 +5857,91 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
     });
   }
 
-  const image = snapshot.images.find((i) => i.kind === "art") ?? snapshot.images[0];
-  const name = designName(snapshot);
+  const image = design.images.find((i) => i.kind === "art") ?? design.images[0];
+  const name = designName(design);
   const errors = result.status === "error" && result.code === "invalid" ? (result.fieldErrors ?? {}) : {};
   const formError =
-    result.status === "error" && !["invalid", "slot_taken", "slot_past"].includes(result.code)
+    result.status === "error" && !["slot_taken", "slot_past", "sold_out", "design_unavailable"].includes(result.code)
       ? ERROR_TEXT[result.code]
       : null;
 
   return (
     <div className="fade-up flex h-full max-h-[inherit] flex-col">
-      <header className="flex items-start gap-4 border-b border-hairline px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8 sm:pt-7">
-        <div className="relative aspect-[219/344] w-14 shrink-0 overflow-hidden rounded-[3px] bg-stencil">
-          <Image src={image.src} alt="" fill sizes="56px" quality={90} className="object-contain mix-blend-multiply" />
+      <header className="border-b border-hairline px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8 sm:pt-7">
+        <div className="flex items-start gap-4">
+          <div className="relative aspect-[219/344] w-14 shrink-0 overflow-hidden rounded-[3px] bg-stencil">
+            <Image src={image.src} alt="" fill sizes="56px" quality={90} className="object-contain mix-blend-multiply" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="label text-[0.6875rem] text-muted">Időpontfoglalás</p>
+            <h2 id={titleId} className="mt-2 font-display text-[1.75rem] leading-tight">
+              {name}
+            </h2>
+            <p className="mt-1 text-[0.9375rem] text-graphite">
+              {formatPrice(design.price)} · {availabilityLabel(design.availability)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Bezárás"
+            className="-mr-2 -mt-1 grid size-11 shrink-0 place-items-center rounded-full transition-[background-color,scale] duration-200 hover:bg-ink/5 active:scale-95"
+          >
+            <Close size={22} />
+          </button>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="label text-[0.6875rem] text-muted">Időpontfoglalás</p>
-          <h2 id="booking-title" className="mt-2 font-display text-[1.75rem] leading-tight">
-            {name}
-          </h2>
-          <p className="mt-1 text-[0.9375rem] text-graphite">
-            {formatPrice(snapshot.price)} · {availabilityLabel(snapshot.availability)}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Bezárás"
-          className="-mr-2 -mt-1 grid size-11 shrink-0 place-items-center rounded-full transition-[background-color,scale] duration-200 hover:bg-ink/5 active:scale-95"
-        >
-          <Close size={22} />
-        </button>
+        {/* In the header, so it stays in view on every step, the one with the send button too. */}
+        <p className="mt-4 text-[0.875rem] leading-snug text-muted">{PAYMENT_NOTE}</p>
       </header>
 
       <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-7 sm:px-8">
         {step === "done" ? (
-          <section aria-live="polite" className="py-2">
+          // Not a live region: it appears together with its text. Focus moves to the heading, which reads the summary too.
+          <section className="py-2">
             <span className="grid size-12 place-items-center rounded-full border border-ink">
               <Check size={22} />
             </span>
             <h3
-              ref={headings.done}
+              ref={doneHeading}
               tabIndex={-1}
+              aria-describedby={`${doneId}-booking ${doneId}-next`}
               className="mt-6 font-display text-[clamp(1.9rem,4vw,2.4rem)] leading-tight focus:outline-none"
             >
               Megkaptam a foglalásod.
             </h3>
-            <p className="mt-4 font-display text-[1.1875rem]">
+            <p id={`${doneId}-booking`} className="mt-4 font-display text-[1.1875rem]">
               {name} · {slot?.label}
             </p>
-            <p className="mt-4 max-w-[28rem] leading-[1.7] text-graphite">
+            <p id={`${doneId}-next`} className="mt-4 max-w-[28rem] leading-[1.7] text-graphite">
               Hamarosan átnézem, és e-mailben visszaigazolom. Ha nem találod a levelet, nézd meg a spam mappát is.
             </p>
             <button type="button" onClick={onClose} className={`${btn.primary} mt-9`}>
               Rendben
             </button>
           </section>
+        ) : step === "unavailable" ? (
+          <section className="py-2">
+            <h3
+              ref={unavailableHeading}
+              tabIndex={-1}
+              aria-describedby={`${unavailableId}-next`}
+              className="font-display text-[clamp(1.9rem,4vw,2.4rem)] leading-tight focus:outline-none"
+            >
+              {result.status === "error" && ERROR_TEXT[result.code]}
+            </h3>
+            <p id={`${unavailableId}-next`} className="mt-4 max-w-[28rem] leading-[1.7] text-graphite">
+              Nézz körül a többi minta között, vagy kérj egyedi tervet a saját ötletedből.
+            </p>
+            <button type="button" onClick={onClose} className={`${btn.primary} mt-9`}>
+              Bezárás
+            </button>
+          </section>
         ) : (
           <>
-            <section hidden={step !== "slot"} aria-labelledby="booking-slot-step">
+            <section hidden={step !== "slot"} aria-labelledby={slotStepId}>
               <h3
-                id="booking-slot-step"
-                ref={headings.slot}
+                id={slotStepId}
+                ref={slotHeading}
                 tabIndex={-1}
                 className="label text-muted focus:outline-none"
               >
@@ -5819,7 +5968,7 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
                   </button>
                 </div>
               ) : days === null ? (
-                <p className="mt-6 text-graphite" aria-live="polite">
+                <p className="mt-6 text-graphite">
                   Időpontok betöltése…
                 </p>
               ) : days.length === 0 ? (
@@ -5857,13 +6006,12 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
                 </div>
               )}
 
-              <div className="mt-10 flex flex-col gap-5 border-t border-hairline pt-6 sm:flex-row sm:items-center sm:justify-between">
-                <p className="max-w-[22rem] text-[0.875rem] leading-snug text-muted">{PAYMENT_NOTE}</p>
+              <div className="mt-10 border-t border-hairline pt-6">
                 <button
                   type="button"
                   disabled={!slot}
                   onClick={() => setStep("details")}
-                  className={`${btn.primary} shrink-0 disabled:opacity-40`}
+                  className={`${btn.primary} w-full justify-between disabled:opacity-40 sm:w-auto sm:min-w-[17rem]`}
                 >
                   Tovább <Arrow />
                 </button>
@@ -5871,11 +6019,11 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
             </section>
 
             {/* Stays mounted while the visitor goes back to change the time, so typed details survive. */}
-            <form hidden={step !== "details"} onSubmit={submit} aria-labelledby="booking-details-step">
+            <form ref={form} hidden={step !== "details"} onSubmit={submit} aria-labelledby={detailsStepId}>
               <div className="flex items-center justify-between gap-4">
                 <h3
-                  id="booking-details-step"
-                  ref={headings.details}
+                  id={detailsStepId}
+                  ref={detailsHeading}
                   tabIndex={-1}
                   className="label text-muted focus:outline-none"
                 >
@@ -5891,13 +6039,14 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
               </div>
               <p className="mt-3 font-display text-[1.25rem]">{slot?.label}</p>
 
-              <input type="hidden" name="designId" value={snapshot.id} />
+              <input type="hidden" name="designId" value={design.id} />
               <input type="hidden" name="slotId" value={slot?.id ?? ""} />
               {/* Honeypot: hidden from people and screen readers, tempting to bots. */}
               <div aria-hidden="true" className="absolute -left-[9999px] size-px overflow-hidden">
                 <label>
                   Weboldal
-                  <input type="text" name="website" tabIndex={-1} autoComplete="off" />
+                  {/* Password managers fill anything that looks fillable; a filled honeypot silently drops a real booking. */}
+                  <input type="text" name="website" tabIndex={-1} autoComplete="off" data-1p-ignore data-lpignore="true" />
                 </label>
               </div>
 
@@ -5983,24 +6132,32 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
                   name="adult"
                   required
                   aria-invalid={errors.adult ? true : undefined}
-                  aria-describedby={errors.adult ? "booking-adult-error" : undefined}
+                  aria-describedby={errors.adult ? adultErrorId : undefined}
                   className="size-[1.125rem] cursor-pointer accent-ink"
                 />
                 Elmúltam 18 éves.
               </label>
-              <ErrorText id="booking-adult-error">{errors.adult}</ErrorText>
+              <ErrorText id={adultErrorId}>{errors.adult}</ErrorText>
 
               {formError && (
                 <p role="alert" className="mt-6 border-l border-ink pl-4 text-[0.9375rem] leading-relaxed">
                   {formError}
                 </p>
               )}
+              {result.status === "error" && result.code === "outdated" && (
+                <button type="button" onClick={() => window.location.reload()} className={`${btn.outline} mt-5`}>
+                  Újratöltés
+                </button>
+              )}
 
               <div className="mt-8 border-t border-hairline pt-6">
                 <button
                   type="submit"
-                  disabled={pending || !slot}
-                  className={`${btn.primary} w-full justify-between disabled:opacity-60 sm:w-auto sm:min-w-[17rem]`}
+                  // Not disabled while sending: a focused button that turns disabled drops focus to <body>,
+                  // and after a failed send the visitor would have to find their way back into the form.
+                  disabled={!slot}
+                  aria-disabled={pending || undefined}
+                  className={`${btn.primary} w-full justify-between disabled:opacity-60 aria-disabled:opacity-60 sm:w-auto sm:min-w-[17rem]`}
                 >
                   {pending ? "Küldés…" : "Foglalás elküldése"} <Arrow />
                 </button>
@@ -6013,12 +6170,34 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
   );
 }
 
-export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
-  const { bookingFor, closeBooking } = useStore();
-  const design = designs.find((d) => d.id === bookingFor) ?? null;
+/** What Tab could reach: where focus can go when the button that opened the dialog is gone. */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
+
+/** The element's ancestors, nearest first, up to and including its <section>; none when it isn't in one. */
+function ancestorsUpToSection(el: HTMLElement | null): HTMLElement[] {
+  const section = el?.closest("section");
+  const chain: HTMLElement[] = [];
+  if (!section) return chain;
+  for (let node = el?.parentElement ?? null; node; node = node.parentElement) {
+    chain.push(node);
+    if (node === section) break;
+  }
+  return chain;
+}
+
+export function BookingDialog() {
+  // The store keeps the design as it was when the dialog opened, so a refresh that takes it off the page (an admin
+  // hid it) doesn't close the dialog while the visitor reads the outcome.
+  const { bookingFor: design, closeBooking } = useStore();
+  const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
-  // The button that opened the dialog. A booking can remove it from the page (the design sells out).
+  // The button that opened the dialog, and its ancestors up to its section. A booking can take the button off the
+  // page (the design sells out); focus then goes to what took its place, close by, instead of jumping away.
   const opener = useRef<HTMLElement | null>(null);
+  const openerAncestors = useRef<HTMLElement[]>([]);
+  // Whether the press that ends in a click started on the backdrop.
+  const pressedBackdrop = useRef(false);
 
   // The store decides whether the native dialog is open; Esc and the close button report back via onClose.
   useEffect(() => {
@@ -6026,6 +6205,7 @@ export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
     if (!dialog) return;
     if (design && !dialog.open) {
       opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      openerAncestors.current = ancestorsUpToSection(opener.current);
       dialog.showModal();
     }
     if (!design && dialog.open) dialog.close();
@@ -6043,21 +6223,36 @@ export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
   return (
     <dialog
       ref={ref}
-      aria-labelledby="booking-title"
+      aria-labelledby={titleId}
       onClose={() => {
         closeBooking();
-        // The dialog hands focus back to its opener; if that button is gone, land on the collection's heading.
-        requestAnimationFrame(() => {
-          if (!opener.current?.isConnected) document.getElementById("flash-title")?.focus();
-        });
+        // close() has already handed focus back to the opener, before this event. If that button is gone, focus goes
+        // to the first element that takes it in the nearest of its old containers still on the page; the collection's
+        // heading is the last resort. Trying each one in turn skips what can't take focus (hidden, inert).
+        if (opener.current?.isConnected) return;
+        for (const el of openerAncestors.current) {
+          if (!el.isConnected) continue;
+          for (const candidate of el.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+            candidate.focus();
+            if (document.activeElement === candidate) return;
+          }
+        }
+        document.getElementById("flash-title")?.focus();
+      }}
+      onPointerDown={(e) => {
+        pressedBackdrop.current = e.target === e.currentTarget;
       }}
       onClick={(e) => {
-        // A click on the backdrop lands on the dialog element itself.
-        if (e.target === e.currentTarget) e.currentTarget.close();
+        // A click on the backdrop lands on the dialog element itself. It counts only if the press started there too:
+        // a drag that selects text in the form and ends outside the panel must not throw the form away.
+        if (e.target === e.currentTarget && pressedBackdrop.current) e.currentTarget.close();
+        pressedBackdrop.current = false;
       }}
-      className="m-0 h-dvh max-h-none w-full max-w-none overflow-hidden bg-paper p-0 text-ink backdrop:bg-ink/45 sm:m-auto sm:h-auto sm:max-h-[min(54rem,calc(100dvh-4rem))] sm:w-[min(42rem,calc(100vw-4rem))] sm:rounded-[6px]"
+      // From sm up a panel pinned near the top, so it grows downwards as the slots arrive or the step changes,
+      // instead of re-centring and moving its header. Below sm a full-screen sheet.
+      className="m-0 h-dvh max-h-none w-full max-w-none overflow-hidden bg-paper p-0 text-ink backdrop:bg-ink/45 sm:mx-auto sm:mb-auto sm:mt-[max(2rem,10vh)] sm:h-fit sm:max-h-[min(54rem,calc(100dvh-max(2rem,10vh)-2rem))] sm:w-[min(42rem,calc(100vw-4rem))] sm:rounded-[6px]"
     >
-      {design && <BookingFlow key={design.id} design={design} onClose={() => ref.current?.close()} />}
+      {design && <BookingFlow key={design.id} design={design} titleId={titleId} onClose={() => ref.current?.close()} />}
     </dialog>
   );
 }
@@ -6065,7 +6260,7 @@ export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
 
 - [ ] **Step 1a: A flash szekció címe fogadhasson fókuszt**
 
-A `components/flash-collection.tsx`-ben az `<h2 id="flash-title" …>` kapjon `tabIndex={-1}`-et, és a `className`-je egészüljön ki a `focus:outline-none` osztállyal. Ide kerül a fókusz, ha a foglalási ablakot megnyitó gomb közben eltűnt.
+A `components/flash-collection.tsx`-ben az `<h2 id="flash-title" …>` kapjon `tabIndex={-1}`-et, és a `className`-je egészüljön ki a `focus:outline-none` osztállyal. Végső tartalékként ide kerül a fókusz, ha a foglalási ablakot megnyitó gomb közben eltűnt, és a környezetében sem maradt fókuszálható elem.
 
 - [ ] **Step 1b: Végső védőháló: `app/(frontend)/error.tsx`**
 
@@ -6077,7 +6272,8 @@ Ha mégis kivétel érné el az oldalt, a látogató egy stílusos, magyar hibao
 import { btn } from "@/components/ui";
 
 // Last resort when something on the page throws: keep the visitor on a styled, Hungarian page.
-export default function Error({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+// Next 16.3: `retry` re-fetches the page and renders it again; `reset` would only re-render what failed.
+export default function Error({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
     <main className="grid min-h-svh place-items-center px-5 text-center">
       <div>
@@ -6088,7 +6284,7 @@ export default function Error({ reset }: { error: Error & { digest?: string }; r
         <p className="mx-auto mt-5 max-w-[26rem] leading-[1.7] text-graphite">
           Próbáld újra, vagy írj Instagramon: @pannipix.
         </p>
-        <button type="button" onClick={reset} className={`${btn.primary} mt-9`}>
+        <button type="button" onClick={retry} className={`${btn.primary} mt-9`}>
           Újrapróbálom
         </button>
       </div>
@@ -6108,7 +6304,7 @@ import { BookingDialog } from "@/components/booking-dialog";
 A `<Footer />` sor után, a `</StoreProvider>` elé:
 
 ```tsx
-      <BookingDialog designs={designs} />
+      <BookingDialog />
 ```
 
 - [ ] **Step 3: Lint és typecheck**
@@ -6219,12 +6415,12 @@ export function Booking() {
   const placeId = useId();
 
   return (
-    <section id="kapcsolat" data-nav="kapcsolat" aria-labelledby="booking-title-contact" className="bg-ink text-paper">
+    <section id="kapcsolat" data-nav="kapcsolat" aria-labelledby="booking-title" className="bg-ink text-paper">
       <div className={`${container} grid gap-16 py-24 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-24 lg:py-36`}>
         <div>
           <p className="label text-ash">Kapcsolat</p>
           <h2
-            id="booking-title-contact"
+            id="booking-title"
             className="mt-5 font-display text-[clamp(2.75rem,5.6vw,5.25rem)] font-normal leading-[0.98] tracking-[-0.025em]"
           >
             Kezdjük a te <em>mintáddal.</em>
@@ -6318,8 +6514,6 @@ export function Booking() {
   );
 }
 ```
-
-(A szekció címének `id`-ja `booking-title-contact` lett, mert a foglalási ablak címe a `booking-title` azonosítót kapta. Két egyforma `id` megtörné az `aria-labelledby`-t.)
 
 - [ ] **Step 4: `app/(frontend)/layout.tsx`: meta leírás**
 
@@ -6748,9 +6942,9 @@ Admin, asztali nézet (1280 px):
 
 Oldal (1280 px és 390 px széles nézet):
 5. A Flash szekcióban 8 minta látszik. A #021 „Elkelt” címkét kapott, ára helyén „Lefoglalva” áll, naptár gomb nincs rajta.
-6. Naptár gomb a #027-en → megnyílik az ablak. Mobilon teljes képernyős, asztalin középre igazított. Az időpontok napok szerint csoportosítva jelennek meg.
+6. Naptár gomb a #027-en → megnyílik az ablak. Mobilon teljes képernyős, asztalin felül rögzített, vízszintesen középre igazított panel, a fejlécben a „nem vásárlás” mondattal. Az időpontok napok szerint csoportosítva jelennek meg.
 7. Időpont kiválasztása → *Tovább* → hibás e-mail (`anna@`) → a mező alatt magyar hibaüzenet jelenik meg, a beírt adatok megmaradnak.
-8. Helyes adatok → *Foglalás elküldése* → „Megkaptam a foglalásod.” Bezárás után a #027 kártyáján „Elkelt” áll (P’CONs = egyszeri).
+8. Helyes adatok → *Foglalás elküldése* → „Megkaptam a foglalásod.” Bezárás után a #027 kártyáján „Elkelt” áll (P’CONs = egyszeri), és a fókusz a kártya képlinkjére kerül, az oldal nem ugrik el.
 9. A dev szerver konzoljában két `Email attempted without being configured` sor van: egy az `ADMIN_EMAIL`-re, egy az ügyfélre.
 10. Adminban a foglalás *Függőben* → *Elutasítva* → a konzolban újabb e-mail sor jelenik meg. Az oldalt frissítve a #027 újra foglalható.
 11. Esc és a háttérre kattintás bezárja az ablakot. Tab-bal az ablakon belül lehet lépkedni.

@@ -216,7 +216,7 @@ A `completed` állapotra és az időpont-áthelyezésre nem megy e-mail. Státus
 
 ### 9.3 Foglalási ablak
 
-Natív `<dialog>` fókuszkezeléssel és Esc-re zárással. Mobilon teljes képernyős lap, asztali nézetben középre igazított panel. A meglévő tokeneket használja (paper/ink, Bodoni + Jost, hairline) és az oldal mozgásnyelvét (`ease-settle`, a csökkentett mozgás beállítás tiszteletben tartása).
+Natív `<dialog>` fókuszkezeléssel és Esc-re zárással. Mobilon teljes képernyős lap, asztali nézetben vízszintesen középre igazított, felül rögzített panel, amely a tartalommal lefelé nő (így nem ugrik, amikor betöltenek az időpontok). Bezáráskor a fókusz visszakerül a megnyitó gombra; ha az közben eltűnt (a minta elkelt), a helyére lépő vagy a környezetében lévő első fókuszálható elemre. A meglévő tokeneket használja (paper/ink, Bodoni + Jost, hairline) és az oldal mozgásnyelvét (`ease-settle`, a csökkentett mozgás beállítás tiszteletben tartása).
 
 1. **Fejléc:** kép, név, ár, foglalhatóság („Egyszeri minta” / „Limitált · még 2 alkalom” / „Korlátlanul foglalható”). Alatta: *„A foglalás nem vásárlás: most nem fizetsz semmit, a részleteket a visszaigazolásban egyeztetjük.”*
 2. **Időpont:**
@@ -226,9 +226,9 @@ Natív `<dialog>` fókuszkezeléssel és Esc-re zárással. Mobilon teljes képe
    - Üres állapot: „Most nincs szabad időpont. Írj Instagramon (@pannipix), és szólok, ha újakat nyitok.”
 3. **Adataid:** név, e-mail, telefon, testtáj, megjegyzés, 18+ jelölőnégyzet, rejtett csapdamező.
 4. **Eredmény:**
-   - Siker: összefoglaló („Megkaptam a foglalásod… e-mailben visszaigazolom”), majd a `router.refresh()` frissíti a foglalhatóságot az oldalon.
+   - Siker: összefoglaló („Megkaptam a foglalásod… e-mailben visszaigazolom”). A server action ugyanabban a válaszban az oldalt is újrarendereli (`refresh()` a `next/cache`-ből), így a foglalhatóság már frissült, mire az ablak a sikert mutatja.
    - Közben elvitt időpont: visszalép az időpontokhoz, friss listával és üzenettel.
-   - Betelt minta: üzenet, a foglalás nem folytatható.
+   - Betelt vagy közben elrejtett minta: üzenet, a foglalás nem folytatható, és az oldal is frissül.
    - Mezőhiba: a mező alatt jelenik meg.
    - Túl sok kérés vagy ismeretlen hiba: általános üzenet és az Instagram elérhetőség.
    - Ha a kérés el sem jut a szerverig (megszakadt kapcsolat), vagy a Payload nem indul el: ugyanez az általános üzenet, a kitöltött űrlap megmarad. Ha az oldal egy újratelepítés miatt elavult: „Az oldal közben frissült…” üzenet és újratöltés gomb.

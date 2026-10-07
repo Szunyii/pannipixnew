@@ -3,36 +3,45 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 type Store = {
-  favorites: Set<string>;
-  cart: Set<string>;
-  featured: string;
-  toggleFavorite: (id: string) => void;
-  toggleCart: (id: string) => void;
-  feature: (id: string) => void;
+  favorites: Set<number>;
+  featured: number | null;
+  /** The design whose booking dialog is open, if any. */
+  bookingFor: number | null;
+  toggleFavorite: (id: number) => void;
+  feature: (id: number) => void;
+  openBooking: (id: number) => void;
+  closeBooking: () => void;
 };
 
 const StoreContext = createContext<Store | null>(null);
 
-function toggled(set: Set<string>, id: string) {
+function toggled(set: Set<number>, id: number) {
   const next = new Set(set);
   if (next.has(id)) next.delete(id);
   else next.add(id);
   return next;
 }
 
-// UI-only state until checkout and accounts exist.
-export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [favorites, setFavorites] = useState<Set<string>>(() => new Set());
-  const [cart, setCart] = useState<Set<string>>(() => new Set());
-  const [featured, setFeatured] = useState("027");
+// Favourites stay UI-only; a booking goes through the booking dialog to Payload.
+export function StoreProvider({
+  initialFeatured,
+  children,
+}: {
+  initialFeatured: number | null;
+  children: React.ReactNode;
+}) {
+  const [favorites, setFavorites] = useState<Set<number>>(() => new Set());
+  const [featured, setFeatured] = useState(initialFeatured);
+  const [bookingFor, setBookingFor] = useState<number | null>(null);
 
-  const toggleFavorite = useCallback((id: string) => setFavorites((s) => toggled(s, id)), []);
-  const toggleCart = useCallback((id: string) => setCart((s) => toggled(s, id)), []);
-  const feature = useCallback((id: string) => setFeatured(id), []);
+  const toggleFavorite = useCallback((id: number) => setFavorites((s) => toggled(s, id)), []);
+  const feature = useCallback((id: number) => setFeatured(id), []);
+  const openBooking = useCallback((id: number) => setBookingFor(id), []);
+  const closeBooking = useCallback(() => setBookingFor(null), []);
 
   const value = useMemo(
-    () => ({ favorites, cart, featured, toggleFavorite, toggleCart, feature }),
-    [favorites, cart, featured, toggleFavorite, toggleCart, feature],
+    () => ({ favorites, featured, bookingFor, toggleFavorite, feature, openBooking, closeBooking }),
+    [favorites, featured, bookingFor, toggleFavorite, feature, openBooking, closeBooking],
   );
 
   return <StoreContext value={value}>{children}</StoreContext>;

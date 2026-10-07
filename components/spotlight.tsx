@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { type DesignImage, type FlashDesign, designName, designs, formatPrice } from "./data";
-import { Check, ChevronLeft, ChevronRight, Heart, Plus, Resize, Sparkle, Torso } from "./icons";
+import { type DesignImage, type FlashDesign, designName, formatPrice } from "./data";
+import { ChevronLeft, ChevronRight, Heart, Plus, Resize, Sparkle, Torso } from "./icons";
 import { useStore } from "./store";
 import { Arrow, Pcons, StyleTags, btn, container } from "./ui";
 
@@ -49,20 +49,40 @@ function Fact({ icon, term, children }: { icon: React.ReactNode; term: string; c
   );
 }
 
+/** What the collection's rule means for this design, in one term and one sentence. */
+function ruleFact({ rule, limit, remaining, soldOut }: FlashDesign["availability"]) {
+  if (rule === "single") {
+    return {
+      term: "Egyszeri minta",
+      body: soldOut ? "Ez a minta már gazdára talált, többé nem tetoválom." : "Ez a design csak egyszer készül el.",
+    };
+  }
+  if (rule === "limited") {
+    return {
+      term: "Limitált minta",
+      body: soldOut
+        ? `Mind a ${limit} alkalom elkelt.`
+        : `Összesen ${limit} alkalommal készül el, ebből még ${remaining} foglalható.`,
+    };
+  }
+  return { term: "Bármikor foglalható", body: "Ez a minta többször is elkészülhet." };
+}
+
 function Detail({ design }: { design: FlashDesign }) {
-  const { favorites, cart, toggleFavorite, toggleCart } = useStore();
+  const { favorites, toggleFavorite, openBooking } = useStore();
   const [active, setActive] = useState(0);
   const name = designName(design);
   const image = design.images[active];
   const saved = favorites.has(design.id);
-  const inCart = cart.has(design.id);
+  const { soldOut } = design.availability;
+  const fact = ruleFact(design.availability);
 
   return (
     <div className="mt-8 grid gap-12 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:gap-20">
       <div>
         <div className="relative aspect-[4/5] overflow-hidden rounded-[3px] bg-stencil">
           <Picture key={image.src} image={image} sizes="(min-width: 1024px) 48vw, 92vw" />
-          {design.sold && (
+          {soldOut && (
             <span className="label absolute left-4 top-4 rounded-[3px] bg-paper px-2.5 py-2 text-[0.625rem]">Elkelt</span>
           )}
         </div>
@@ -88,24 +108,22 @@ function Detail({ design }: { design: FlashDesign }) {
       <div className="lg:pt-2">
         <div className="flex items-baseline justify-between">
           <p className="label text-muted">{design.collection}</p>
-          <p className="font-display text-[1.0625rem] text-muted">#{design.id}</p>
+          <p className="font-display text-[1.0625rem] text-muted">#{design.number}</p>
         </div>
         <h3 className="mt-5 font-display text-[clamp(2.6rem,4.4vw,3.9rem)] font-normal leading-none tracking-[-0.02em]">
-          {design.collection === "P’CONs" ? <Pcons suffix={` #${design.id}`} /> : name}
+          {design.collection === "P’CONs" ? <Pcons suffix={` #${design.number}`} /> : name}
         </h3>
         <StyleTags className="mt-5" />
         <p className="mt-7 font-display text-[1.875rem] leading-none">
-          {design.sold ? <span className="italic text-muted">Elkelt</span> : formatPrice(design.price)}
+          {soldOut ? <span className="italic text-muted">Elkelt</span> : formatPrice(design.price)}
         </p>
 
         <dl className="mt-9 space-y-7 border-t border-hairline pt-8">
           <Fact icon={<Resize size={22} />} term="Ajánlott méret">
             <span className="font-display text-[1.1875rem]">{design.size}</span>
           </Fact>
-          <Fact icon={<Sparkle size={22} />} term="Egyszer elkészíthető minta">
-            <span className="text-[0.9375rem] leading-relaxed text-graphite">
-              {design.sold ? "Ez a minta már elkészült, többé nem tetoválom." : "Ez a design csak egyszer készül el."}
-            </span>
+          <Fact icon={<Sparkle size={22} />} term={fact.term}>
+            <span className="text-[0.9375rem] leading-relaxed text-graphite">{fact.body}</span>
           </Fact>
           <Fact icon={<Torso size={22} />} term="Ajánlott testtájak">
             <span className="font-display text-[1.1875rem]">{design.placements}</span>
@@ -116,19 +134,13 @@ function Detail({ design }: { design: FlashDesign }) {
         </dl>
 
         <div className="mt-10 grid gap-3">
-          {design.sold ? (
+          {soldOut ? (
             <a href="#kapcsolat" className={`${btn.primary} w-full justify-between`}>
               Hasonló egyedi tervet kérek <Arrow />
             </a>
           ) : (
-            <button
-              type="button"
-              onClick={() => toggleCart(design.id)}
-              aria-pressed={inCart}
-              className={`${btn.primary} w-full justify-between`}
-            >
-              {inCart ? "A kosárban van" : "Ezt a mintát szeretném"}
-              {inCart ? <Check size={18} /> : <Arrow />}
+            <button type="button" onClick={() => openBooking(design.id)} className={`${btn.primary} w-full justify-between`}>
+              Időpontot foglalok <Arrow />
             </button>
           )}
           <button
@@ -151,7 +163,7 @@ function Detail({ design }: { design: FlashDesign }) {
             ],
             [
               "Hogyan működik?",
-              "Megvásárlod a mintát, ezzel lekerül a kollekcióból. Utána egyeztetünk időpontot és pontos elhelyezést, majd elkészül a tetoválás.",
+              "Kiválasztasz egy szabad időpontot, és elküldöd a foglalást. Most nem fizetsz semmit: átnézem a foglalást, és e-mailben visszaigazolom. A foglalással a minta egy alkalma lekerül a kínálatból.",
             ],
           ].map(([title, body]) => (
             <details key={title} className="border-b border-hairline">
@@ -168,8 +180,9 @@ function Detail({ design }: { design: FlashDesign }) {
   );
 }
 
-export function Spotlight() {
+export function Spotlight({ designs }: { designs: FlashDesign[] }) {
   const { featured, feature } = useStore();
+  if (designs.length === 0) return null;
   const index = Math.max(0, designs.findIndex((d) => d.id === featured));
   const design = designs[index];
   const step = (dir: 1 | -1) => feature(designs[(index + dir + designs.length) % designs.length].id);

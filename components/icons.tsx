@@ -52,10 +52,10 @@ export const Heart = ({ filled, ...p }: IconProps & { filled?: boolean }) => (
   </Icon>
 );
 
-export const Bag = (p: IconProps) => (
+export const Calendar = (p: IconProps) => (
   <Icon {...p}>
-    <path d="M5.5 8.5h13l-.9 12h-11.2Z" />
-    <path d="M9 10.5V7a3 3 0 0 1 6 0v3.5" />
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+    <path d="M3.5 10h17M8 3v4M16 3v4" />
   </Icon>
 );
 

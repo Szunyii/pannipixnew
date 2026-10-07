@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bag, Close, Menu, User } from "./icons";
-import { useStore } from "./store";
+import { Close, Menu, User } from "./icons";
 import { Logo, Tags, container } from "./ui";
 
 const nav = [
@@ -17,7 +16,6 @@ const iconBtn =
   "relative grid size-11 place-items-center rounded-full text-ink transition-[background-color,scale] duration-200 hover:bg-ink/5 active:scale-95 active:bg-ink/10 active:duration-75";
 
 export function Header() {
-  const { cart } = useStore();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string | null>(null);
 
@@ -74,14 +72,6 @@ export function Header() {
             <button type="button" aria-label="Fiókom" className={`${iconBtn} hidden sm:grid`}>
               <User size={22} />
             </button>
-            <a href="#flash" aria-label={`Kosár: ${cart.size} minta`} className={iconBtn}>
-              <Bag size={22} />
-              {cart.size > 0 && (
-                <span className="absolute right-1.5 top-1.5 grid size-[1.05rem] place-items-center rounded-full bg-ink font-sans text-[0.625rem] leading-none text-paper">
-                  {cart.size}
-                </span>
-              )}
-            </a>
             <button
               type="button"
               aria-label={open ? "Menü bezárása" : "Menü megnyitása"}

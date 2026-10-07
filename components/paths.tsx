@@ -35,29 +35,30 @@ function Construction() {
   );
 }
 
-const services = [
-  {
-    id: "egyedi",
-    label: "Egyedi tetoválás",
-    title: "Megtervezem a te ötletedből.",
-    body: "Elmeséled, mi foglalkoztat: egy emléket, egy szimbólumot, egy hangulatot. Ebből építek konceptuális kompozíciót, ami követi a testtájad formáját.",
-    facts: [
-      ["Kezdés", "Online konzultáció"],
-      ["Tervezés", "2–3 hét"],
-      ["Ár", "Egyedi ajánlat a konzultáció után"],
-    ],
-    cta: { href: "#kapcsolat", label: "Egyedi tervet kérek", style: btn.primary },
-    visual: <Construction />,
-  },
-  {
+const customService = {
+  id: "egyedi",
+  label: "Egyedi tetoválás",
+  title: "Megtervezem a te ötletedből.",
+  body: "Elmeséled, mi foglalkoztat: egy emléket, egy szimbólumot, egy hangulatot. Ebből építek konceptuális kompozíciót, ami követi a testtájad formáját.",
+  facts: [
+    ["Kezdés", "Online konzultáció"],
+    ["Tervezés", "2–3 hét"],
+    ["Ár", "Egyedi ajánlat a konzultáció után"],
+  ],
+  cta: { href: "#kapcsolat", label: "Egyedi tervet kérek", style: btn.primary },
+  visual: <Construction />,
+};
+
+function flashService(price: string | null) {
+  return {
     id: "flash-minta",
     label: "Flash minták",
-    title: "Válassz egy kész, egyszeri mintát.",
-    body: "Előre megrajzolt darabok a PANNIPIX kollekciókból, fix áron. Ha megvásárolod, a minta lekerül a kínálatból, és senki máson nem fogod látni.",
+    title: "Válassz egy kész mintát.",
+    body: "Előre megrajzolt darabok a PANNIPIX kollekciókból, fix áron. Kiválasztod a mintát és egy szabad időpontot, én pedig visszaigazolom a foglalást.",
     facts: [
-      ["Ár", "90 000 – 120 000 Ft"],
+      ["Ár", price ?? "Mintánként megadva"],
       ["Méret", "Mintánként megadva"],
-      ["Darabszám", "Mindegyikből egy"],
+      ["Alkalmak", "Kollekciónként eltérő"],
     ],
     cta: { href: "#flash", label: "Flash minták böngészése", style: btn.outline },
     visual: (
@@ -70,10 +71,11 @@ const services = [
         className="object-contain py-[6%] mix-blend-multiply"
       />
     ),
-  },
-];
+  };
+}
 
-export function Paths() {
+export function Paths({ flashPrice }: { flashPrice: string | null }) {
+  const services = [customService, flashService(flashPrice)];
   return (
     <section id="tattoo" data-nav="tattoo" aria-labelledby="paths-title" className="relative">
       <div className={`${container} relative pb-28 pt-12 lg:pb-40 lg:pt-16`}>

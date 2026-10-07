@@ -1631,11 +1631,20 @@ EOF
 ```ts
 import { APIError, type CollectionBeforeDeleteHook, type CollectionSlug, type Where } from "payload";
 
+/** A delete the guards turn down on purpose: the admin sees the message, and the server logs it at info (payload.config.ts). */
+export class DeleteRefusedError extends APIError {
+  constructor(message: string) {
+    super(message, 400, null, true);
+    // Set by hand: loggingLevels matches on the name, and a minifier may rename the class.
+    this.name = "DeleteRefusedError";
+  }
+}
+
 function refuseWhileReferenced(collection: CollectionSlug, field: string, message: string): CollectionBeforeDeleteHook {
   return async ({ id, req }) => {
     const where: Where = { [field]: { equals: id } };
     const { totalDocs } = await req.payload.count({ collection, where, overrideAccess: true, req });
-    if (totalDocs > 0) throw new APIError(message, 400, null, true);
+    if (totalDocs > 0) throw new DeleteRefusedError(message);
   };
 }
 
@@ -1657,17 +1666,31 @@ export const guardSlotDelete = refuseWhileReferenced(
   "slot",
   "Az időpont nem törölhető, mert foglalás tartozik hozzá. Előbb utasítsd el vagy mondd le a foglalást.",
 );
+
+// Payload removes an upload's files before the row, so without this check the row delete would fail on the design's
+// image reference only after the artwork was gone from disk.
+export const guardMediaDelete = refuseWhileReferenced(
+  "designs",
+  "images.image",
+  "A kép nem törölhető, mert flash minta használja. Előbb cseréld le a mintában.",
+);
 ```
 
 - [ ] **Step 2: `cms/collections/Categories.ts`**
 
 ```ts
-import type { CollectionAfterChangeHook, CollectionConfig } from "payload";
+import type { CollectionAfterChangeHook, CollectionBeforeChangeHook, CollectionConfig } from "payload";
 import type { Category } from "@/payload-types";
 import { anyone, isAdmin } from "../access";
 import { guardCategoryDelete } from "../booking/guards";
 
-/** Designs carry the collection's name ("P’CONs #027"); re-saving them after a rename lets their setTitle hook catch up. */
+/** Only a limited collection has a limit; clearing it otherwise keeps an old value from coming back with the rule. */
+const clearUnusedLimit: CollectionBeforeChangeHook<Category> = ({ data, originalDoc }) => {
+  if ((data.rule ?? originalDoc?.rule) !== "limited") data.limit = null;
+  return data;
+};
+
+/** Designs carry the collection's name ("P’CONs #027"); re-saving them after a rename lets prepareDesign catch up. */
 const renameDesigns: CollectionAfterChangeHook<Category> = async ({ doc, operation, previousDoc, req }) => {
   if (operation !== "update" || previousDoc.name === doc.name) return;
   const { errors } = await req.payload.update({
@@ -1692,8 +1715,10 @@ export const Categories: CollectionConfig = {
     description: "A kollekció dönti el, hányszor foglalható egy-egy mintája.",
   },
   defaultSort: "order",
+  // Payload's copy appends an English " - Copy" to the name.
+  disableDuplicate: true,
   access: { read: anyone, create: isAdmin, update: isAdmin, delete: isAdmin },
-  hooks: { afterChange: [renameDesigns], beforeDelete: [guardCategoryDelete] },
+  hooks: { beforeChange: [clearUnusedLimit], afterChange: [renameDesigns], beforeDelete: [guardCategoryDelete] },
   fields: [
     { name: "name", type: "text", required: true, unique: true, label: "Név" },
     {
@@ -1738,17 +1763,38 @@ export const Categories: CollectionConfig = {
 - [ ] **Step 3: `cms/collections/Designs.ts`**
 
 ```ts
-import type { CollectionBeforeChangeHook, CollectionConfig } from "payload";
+import { ValidationError, type CollectionBeforeChangeHook, type CollectionConfig, type Where } from "payload";
 import { relationId } from "@/lib/booking-rules";
 import type { Design } from "@/payload-types";
 import { adminOrVisible, isAdmin } from "../access";
 import { guardDesignDelete } from "../booking/guards";
 
-/** "P’CONs #027": the design's name in admin lists and pickers. */
-const setTitle: CollectionBeforeChangeHook<Design> = async ({ data, originalDoc, req }) => {
+/** Trims the number, refuses one the collection already has, and names the design "P’CONs #027" for admin lists and pickers. */
+const prepareDesign: CollectionBeforeChangeHook<Design> = async ({ data, originalDoc, req }) => {
+  if (typeof data.number === "string") data.number = data.number.trim();
   const categoryId = relationId(data.category ?? originalDoc?.category);
   const number = data.number ?? originalDoc?.number;
   if (categoryId === null || !number) return data;
+
+  // Checked here, a clash shows on the number field; the unique (category, number) index still settles two saves at once.
+  const sameNumber: Where[] = [{ category: { equals: categoryId } }, { number: { equals: number } }];
+  if (originalDoc?.id) sameNumber.push({ id: { not_equals: originalDoc.id } });
+  const { totalDocs } = await req.payload.count({
+    collection: "designs",
+    where: { and: sameNumber },
+    overrideAccess: true,
+    req,
+  });
+  if (totalDocs > 0) {
+    throw new ValidationError(
+      {
+        collection: "designs",
+        errors: [{ path: "number", label: "Sorszám", message: "Ebben a kollekcióban már van ilyen sorszámú minta." }],
+      },
+      req.t,
+    );
+  }
+
   const category = await req.payload.findByID({
     collection: "categories",
     id: categoryId,
@@ -1771,9 +1817,11 @@ export const Designs: CollectionConfig = {
     listSearchableFields: ["title", "number"],
   },
   defaultSort: "-createdAt",
+  // A copy would keep the number, which its collection already has.
+  disableDuplicate: true,
   access: { read: adminOrVisible, create: isAdmin, update: isAdmin, delete: isAdmin },
   indexes: [{ fields: ["category", "number"], unique: true }],
-  hooks: { beforeChange: [setTitle], beforeDelete: [guardDesignDelete] },
+  hooks: { beforeChange: [prepareDesign], beforeDelete: [guardDesignDelete] },
   fields: [
     { name: "title", type: "text", label: "Minta", admin: { hidden: true } },
     {
@@ -1921,7 +1969,12 @@ export const Slots: CollectionConfig = {
         supportedTimezones: [{ label: "Budapest", value: TIME_ZONE }],
         // Budapest is the only zone and Payload fills it in; left required, the generated type would make every
         // slot create pass startsAt_tz. The admin's zone picker stays required: it follows startsAt's `required`.
-        override: ({ baseField }) => ({ ...baseField, required: false }),
+        override: ({ baseField }) => ({
+          ...baseField,
+          required: false,
+          label: "Időzóna",
+          admin: { ...baseField.admin, disableListColumn: true, disableListFilter: true },
+        }),
       },
       admin: {
         date: {
@@ -2032,7 +2085,12 @@ export const Bookings: CollectionConfig = {
       label: "Elmúlt 18 éves",
       validate: (value) => value === true || "Csak 18 év feletti ügyfél foglalhat.",
     },
-    { name: "seat", type: "number", label: "Sorszám (belső)", admin: { hidden: true, disableListColumn: true } },
+    {
+      name: "seat",
+      type: "number",
+      label: "Sorszám (belső)",
+      admin: { hidden: true, disableListColumn: true, disableListFilter: true },
+    },
     { name: "designName", type: "text", label: "Minta (foglaláskor)", admin: { readOnly: true, position: "sidebar" } },
     {
       name: "slotStartsAt",
@@ -2106,7 +2164,9 @@ let imageId: number | undefined;
 /** Clears everything but images and admins, in the order the delete guards allow. */
 export async function resetDatabase(payload: Payload) {
   for (const collection of ["bookings", "slots", "designs", "categories"] as const) {
-    await payload.delete({ collection, where: { id: { exists: true } }, overrideAccess: true });
+    // A bulk delete reports the documents it couldn't delete instead of throwing.
+    const { errors } = await payload.delete({ collection, where: { id: { exists: true } }, overrideAccess: true });
+    if (errors.length > 0) throw new Error(`Could not clear ${collection}: ${errors.map((e) => e.message).join("; ")}`);
   }
 }
 
@@ -2115,35 +2175,44 @@ export async function createCategory(payload: Payload, rule: BookingRule, limit?
   return payload.create({ collection: "categories", data: { name: `Teszt ${sequence}`, rule, limit, order: sequence } });
 }
 
+/** Uploads the fixture image as a new media document. */
+export function createImage(payload: Payload) {
+  return payload.create({
+    collection: "media",
+    data: { alt: "Tesztminta" },
+    filePath: fileURLToPath(new URL("./fixtures/sample.webp", import.meta.url)),
+  });
+}
+
+/** One image shared by every design that doesn't ask for its own. */
 async function testImage(payload: Payload) {
-  imageId ??= (
-    await payload.create({
-      collection: "media",
-      data: { alt: "Tesztminta" },
-      filePath: fileURLToPath(new URL("./fixtures/sample.webp", import.meta.url)),
-    })
-  ).id;
+  imageId ??= (await createImage(payload)).id;
   return imageId;
 }
 
-export async function createDesign(payload: Payload, categoryId: number, data: { visible?: boolean; price?: number } = {}) {
+export async function createDesign(
+  payload: Payload,
+  categoryId: number,
+  data: { visible?: boolean; price?: number; number?: string; image?: number } = {},
+) {
   sequence += 1;
   return payload.create({
     collection: "designs",
     data: {
       category: categoryId,
-      number: String(sequence).padStart(3, "0"),
+      number: data.number ?? String(sequence).padStart(3, "0"),
       price: data.price ?? 90000,
       visible: data.visible ?? true,
-      images: [{ image: await testImage(payload), kind: "art", label: "Minta" }],
+      images: [{ image: data.image ?? (await testImage(payload)), kind: "art", label: "Minta" }],
     },
   });
 }
 
-/** A slot a week from now (or a week ago), an hour after the previous one so start times never collide. */
+/** A slot over a week from now (or over a week ago); each call goes an hour further, so start times never collide. */
 export async function createSlot(payload: Payload, { past = false } = {}) {
   sequence += 1;
-  const startsAt = new Date(Date.now() + (past ? -7 : 7) * DAY + sequence * HOUR).toISOString();
+  const offset = 7 * DAY + sequence * HOUR;
+  const startsAt = new Date(Date.now() + (past ? -offset : offset)).toISOString();
   return payload.create({ collection: "slots", data: { startsAt } });
 }
 
@@ -2175,13 +2244,17 @@ export function publicInput(designId: number, slotId: number): BookingInput {
 - [ ] **Step 9: Integrációs teszt: `tests/int/collections.test.ts`**
 
 ```ts
-import type { Payload } from "payload";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { Forbidden, logError, type Payload } from "payload";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createBooking,
   createCategory,
   createDesign,
+  createImage,
   createSlot,
+  customer,
   getTestPayload,
   resetDatabase,
 } from "../helpers";
@@ -2195,6 +2268,10 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDatabase(payload);
 });
+
+/** Whether an upload's file is in the media folder (tests/setup.ts points MEDIA_DIR at a temp folder). */
+const onDisk = (filename: string | null | undefined) =>
+  Boolean(filename) && fs.existsSync(path.join(process.env.MEDIA_DIR ?? "", filename ?? ""));
 
 describe("collections", () => {
   it("names designs and slots for the admin", async () => {
@@ -2218,11 +2295,54 @@ describe("collections", () => {
     expect(after.images).toEqual(before.images);
   });
 
+  it("stores a design number trimmed", async () => {
+    const category = await createCategory(payload, "single");
+    const design = await createDesign(payload, category.id, { number: " 027 " });
+    expect(design.number).toBe("027");
+    expect(design.title).toBe(`${category.name} #027`);
+  });
+
+  it("refuses a number its collection already has, but not another collection's", async () => {
+    const category = await createCategory(payload, "single");
+    await createDesign(payload, category.id, { number: "027" });
+
+    await expect(createDesign(payload, category.id, { number: "027" })).rejects.toMatchObject({
+      name: "ValidationError",
+      data: { errors: [{ path: "number", message: "Ebben a kollekcióban már van ilyen sorszámú minta." }] },
+    });
+    const other = await createCategory(payload, "single");
+    expect((await createDesign(payload, other.id, { number: "027" })).number).toBe("027");
+  });
+
+  it("doesn't duplicate designs or collections", async () => {
+    const category = await createCategory(payload, "single");
+    const design = await createDesign(payload, category.id);
+    await expect(payload.duplicate({ collection: "designs", id: design.id })).rejects.toThrow(/cannot be duplicated/);
+    await expect(payload.duplicate({ collection: "categories", id: category.id })).rejects.toThrow(
+      /cannot be duplicated/,
+    );
+  });
+
   it("asks for at least two bookings on a limited collection", async () => {
     await expect(
       payload.create({ collection: "categories", data: { name: "Hibás", rule: "limited", limit: 1 } }),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ name: "ValidationError", data: { errors: [{ path: "limit" }] } });
     expect((await createCategory(payload, "limited", 2)).limit).toBe(2);
+  });
+
+  it("drops the limit of a collection that isn't limited", async () => {
+    const limited = await createCategory(payload, "limited", 3);
+    const single = await payload.update({ collection: "categories", id: limited.id, data: { rule: "single" } });
+    expect(single.limit).toBeNull();
+    expect((await createCategory(payload, "unlimited", 5)).limit).toBeNull();
+  });
+
+  it("refuses a second slot at the same time", async () => {
+    const { startsAt } = await createSlot(payload);
+    await expect(payload.create({ collection: "slots", data: { startsAt } })).rejects.toMatchObject({
+      name: "ValidationError",
+      data: { errors: [{ path: "startsAt" }] },
+    });
   });
 
   it("hides switched-off designs from visitors", async () => {
@@ -2231,6 +2351,25 @@ describe("collections", () => {
     const shown = await createDesign(payload, category.id);
     const result = await payload.find({ collection: "designs", overrideAccess: false });
     expect(result.docs.map((d) => d.id)).toEqual([shown.id]);
+  });
+
+  it("keeps visitors away from bookings, slots and admin accounts", async () => {
+    const category = await createCategory(payload, "single");
+    const design = await createDesign(payload, category.id);
+    const slot = await createSlot(payload);
+
+    for (const collection of ["bookings", "slots", "users"] as const) {
+      await expect(payload.find({ collection, overrideAccess: false })).rejects.toBeInstanceOf(Forbidden);
+    }
+    await expect(
+      payload.create({
+        collection: "bookings",
+        data: { ...customer, design: design.id, slot: slot.id, status: "pending" },
+        overrideAccess: false,
+      }),
+    ).rejects.toBeInstanceOf(Forbidden);
+    const categories = await payload.find({ collection: "categories", overrideAccess: false });
+    expect(categories.docs.map((c) => c.id)).toEqual([category.id]);
   });
 
   it("keeps referenced collections, designs and slots from being deleted", async () => {
@@ -2242,6 +2381,39 @@ describe("collections", () => {
     await expect(payload.delete({ collection: "categories", id: category.id })).rejects.toThrow(/minta tartozik/);
     await expect(payload.delete({ collection: "designs", id: design.id })).rejects.toThrow(/foglalás tartozik/);
     await expect(payload.delete({ collection: "slots", id: slot.id })).rejects.toThrow(/foglalás tartozik/);
+  });
+
+  it("keeps an image a design uses, files and all", async () => {
+    const used = await createImage(payload);
+    const unused = await createImage(payload);
+    await createDesign(payload, (await createCategory(payload, "single")).id, { image: used.id });
+
+    await expect(payload.delete({ collection: "media", id: used.id })).rejects.toThrow(
+      "A kép nem törölhető, mert flash minta használja. Előbb cseréld le a mintában.",
+    );
+    expect(onDisk(used.filename)).toBe(true);
+    expect(onDisk(used.sizes?.thumbnail?.filename)).toBe(true);
+
+    await payload.delete({ collection: "media", id: unused.id });
+    expect(onDisk(unused.filename)).toBe(false);
+  });
+
+  it("logs a refused delete as info, not as a server error", async () => {
+    const category = await createCategory(payload, "single");
+    await createDesign(payload, category.id);
+    const refusal = await payload.delete({ collection: "categories", id: category.id }).catch((err: unknown) => err);
+    expect(refusal).toMatchObject({ name: "DeleteRefusedError", status: 400, isPublic: true });
+
+    const info = vi.spyOn(payload.logger, "info").mockImplementation(() => {});
+    const error = vi.spyOn(payload.logger, "error").mockImplementation(() => {});
+    try {
+      logError({ err: refusal, payload });
+      expect(info).toHaveBeenCalledOnce();
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+      error.mockRestore();
+    }
   });
 
   it("shows whether a slot is free, booked or past", async () => {
@@ -2266,7 +2438,7 @@ describe("collections", () => {
 npx vitest run tests/int/collections.test.ts
 ```
 
-Expected: PASS (6 teszt). Ha a séma push-a a `bookings` összetett indexén bukik el (`indexes` → `design`, `seat`), az index építésénél a relationship mező oszlopa (`design_id`) nem oldódott fel. Ilyenkor az `indexes` sor helyett a `payload.config.ts` `sqliteAdapter` hívásában add hozzá ugyanezt az indexet az `afterSchemaInit` hookkal (`uniqueIndex("bookings_design_seat_idx").on(table.design, table.seat)`, a `@payloadcms/db-sqlite/drizzle/sqlite-core`-ból), majd futtasd újra.
+Expected: PASS (14 teszt). Ha a séma push-a a `bookings` összetett indexén bukik el (`indexes` → `design`, `seat`), az index építésénél a relationship mező oszlopa (`design_id`) nem oldódott fel. Ilyenkor az `indexes` sor helyett a `payload.config.ts` `sqliteAdapter` hívásában add hozzá ugyanezt az indexet az `afterSchemaInit` hookkal (`uniqueIndex("bookings_design_seat_idx").on(table.design, table.seat)`, a `@payloadcms/db-sqlite/drizzle/sqlite-core`-ból), majd futtasd újra.
 
 - [ ] **Step 11: Lint, typecheck, teljes tesztkészlet**
 
@@ -2287,6 +2459,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 EOF
 )"
 ```
+
+> **Az átnézés után (commit `bdcd7d1`):**
+> - A `cms/collections/Media.ts` `hooks: { beforeDelete: [guardMediaDelete] }`-t kapott. Használatban lévő kép így nem törölhető, mert a Payload a fájlokat a sor törlése előtt törölné.
+> - A `payload.config.ts` `loggingLevels` beállítása a `DeleteRefusedError`-t és a `BookingError`-t info szinten naplózza.
+> - A fenti kódblokkok már a végleges változatot mutatják: minta-sorszám ütközés barátságos hibával, duplikálás tiltva, hozzáférés-tesztek, a `limit` törlése nem limitált szabálynál.
+
 
 ---
 

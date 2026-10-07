@@ -83,7 +83,12 @@ export const Bookings: CollectionConfig = {
       label: "Elmúlt 18 éves",
       validate: (value) => value === true || "Csak 18 év feletti ügyfél foglalhat.",
     },
-    { name: "seat", type: "number", label: "Sorszám (belső)", admin: { hidden: true, disableListColumn: true } },
+    {
+      name: "seat",
+      type: "number",
+      label: "Sorszám (belső)",
+      admin: { hidden: true, disableListColumn: true, disableListFilter: true },
+    },
     { name: "designName", type: "text", label: "Minta (foglaláskor)", admin: { readOnly: true, position: "sidebar" } },
     {
       name: "slotStartsAt",

@@ -17,7 +17,9 @@ let imageId: number | undefined;
 /** Clears everything but images and admins, in the order the delete guards allow. */
 export async function resetDatabase(payload: Payload) {
   for (const collection of ["bookings", "slots", "designs", "categories"] as const) {
-    await payload.delete({ collection, where: { id: { exists: true } }, overrideAccess: true });
+    // A bulk delete reports the documents it couldn't delete instead of throwing.
+    const { errors } = await payload.delete({ collection, where: { id: { exists: true } }, overrideAccess: true });
+    if (errors.length > 0) throw new Error(`Could not clear ${collection}: ${errors.map((e) => e.message).join("; ")}`);
   }
 }
 
@@ -26,35 +28,44 @@ export async function createCategory(payload: Payload, rule: BookingRule, limit?
   return payload.create({ collection: "categories", data: { name: `Teszt ${sequence}`, rule, limit, order: sequence } });
 }
 
+/** Uploads the fixture image as a new media document. */
+export function createImage(payload: Payload) {
+  return payload.create({
+    collection: "media",
+    data: { alt: "Tesztminta" },
+    filePath: fileURLToPath(new URL("./fixtures/sample.webp", import.meta.url)),
+  });
+}
+
+/** One image shared by every design that doesn't ask for its own. */
 async function testImage(payload: Payload) {
-  imageId ??= (
-    await payload.create({
-      collection: "media",
-      data: { alt: "Tesztminta" },
-      filePath: fileURLToPath(new URL("./fixtures/sample.webp", import.meta.url)),
-    })
-  ).id;
+  imageId ??= (await createImage(payload)).id;
   return imageId;
 }
 
-export async function createDesign(payload: Payload, categoryId: number, data: { visible?: boolean; price?: number } = {}) {
+export async function createDesign(
+  payload: Payload,
+  categoryId: number,
+  data: { visible?: boolean; price?: number; number?: string; image?: number } = {},
+) {
   sequence += 1;
   return payload.create({
     collection: "designs",
     data: {
       category: categoryId,
-      number: String(sequence).padStart(3, "0"),
+      number: data.number ?? String(sequence).padStart(3, "0"),
       price: data.price ?? 90000,
       visible: data.visible ?? true,
-      images: [{ image: await testImage(payload), kind: "art", label: "Minta" }],
+      images: [{ image: data.image ?? (await testImage(payload)), kind: "art", label: "Minta" }],
     },
   });
 }
 
-/** A slot a week from now (or a week ago), an hour after the previous one so start times never collide. */
+/** A slot over a week from now (or over a week ago); each call goes an hour further, so start times never collide. */
 export async function createSlot(payload: Payload, { past = false } = {}) {
   sequence += 1;
-  const startsAt = new Date(Date.now() + (past ? -7 : 7) * DAY + sequence * HOUR).toISOString();
+  const offset = 7 * DAY + sequence * HOUR;
+  const startsAt = new Date(Date.now() + (past ? -offset : offset)).toISOString();
   return payload.create({ collection: "slots", data: { startsAt } });
 }
 

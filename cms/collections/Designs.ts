@@ -1,14 +1,35 @@
-import type { CollectionBeforeChangeHook, CollectionConfig } from "payload";
+import { ValidationError, type CollectionBeforeChangeHook, type CollectionConfig, type Where } from "payload";
 import { relationId } from "@/lib/booking-rules";
 import type { Design } from "@/payload-types";
 import { adminOrVisible, isAdmin } from "../access";
 import { guardDesignDelete } from "../booking/guards";
 
-/** "P’CONs #027": the design's name in admin lists and pickers. */
-const setTitle: CollectionBeforeChangeHook<Design> = async ({ data, originalDoc, req }) => {
+/** Trims the number, refuses one the collection already has, and names the design "P’CONs #027" for admin lists and pickers. */
+const prepareDesign: CollectionBeforeChangeHook<Design> = async ({ data, originalDoc, req }) => {
+  if (typeof data.number === "string") data.number = data.number.trim();
   const categoryId = relationId(data.category ?? originalDoc?.category);
   const number = data.number ?? originalDoc?.number;
   if (categoryId === null || !number) return data;
+
+  // Checked here, a clash shows on the number field; the unique (category, number) index still settles two saves at once.
+  const sameNumber: Where[] = [{ category: { equals: categoryId } }, { number: { equals: number } }];
+  if (originalDoc?.id) sameNumber.push({ id: { not_equals: originalDoc.id } });
+  const { totalDocs } = await req.payload.count({
+    collection: "designs",
+    where: { and: sameNumber },
+    overrideAccess: true,
+    req,
+  });
+  if (totalDocs > 0) {
+    throw new ValidationError(
+      {
+        collection: "designs",
+        errors: [{ path: "number", label: "Sorszám", message: "Ebben a kollekcióban már van ilyen sorszámú minta." }],
+      },
+      req.t,
+    );
+  }
+
   const category = await req.payload.findByID({
     collection: "categories",
     id: categoryId,
@@ -31,9 +52,11 @@ export const Designs: CollectionConfig = {
     listSearchableFields: ["title", "number"],
   },
   defaultSort: "-createdAt",
+  // A copy would keep the number, which its collection already has.
+  disableDuplicate: true,
   access: { read: adminOrVisible, create: isAdmin, update: isAdmin, delete: isAdmin },
   indexes: [{ fields: ["category", "number"], unique: true }],
-  hooks: { beforeChange: [setTitle], beforeDelete: [guardDesignDelete] },
+  hooks: { beforeChange: [prepareDesign], beforeDelete: [guardDesignDelete] },
   fields: [
     { name: "title", type: "text", label: "Minta", admin: { hidden: true } },
     {

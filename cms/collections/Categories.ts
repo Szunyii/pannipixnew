@@ -1,9 +1,15 @@
-import type { CollectionAfterChangeHook, CollectionConfig } from "payload";
+import type { CollectionAfterChangeHook, CollectionBeforeChangeHook, CollectionConfig } from "payload";
 import type { Category } from "@/payload-types";
 import { anyone, isAdmin } from "../access";
 import { guardCategoryDelete } from "../booking/guards";
 
-/** Designs carry the collection's name ("P’CONs #027"); re-saving them after a rename lets their setTitle hook catch up. */
+/** Only a limited collection has a limit; clearing it otherwise keeps an old value from coming back with the rule. */
+const clearUnusedLimit: CollectionBeforeChangeHook<Category> = ({ data, originalDoc }) => {
+  if ((data.rule ?? originalDoc?.rule) !== "limited") data.limit = null;
+  return data;
+};
+
+/** Designs carry the collection's name ("P’CONs #027"); re-saving them after a rename lets prepareDesign catch up. */
 const renameDesigns: CollectionAfterChangeHook<Category> = async ({ doc, operation, previousDoc, req }) => {
   if (operation !== "update" || previousDoc.name === doc.name) return;
   const { errors } = await req.payload.update({
@@ -28,8 +34,10 @@ export const Categories: CollectionConfig = {
     description: "A kollekció dönti el, hányszor foglalható egy-egy mintája.",
   },
   defaultSort: "order",
+  // Payload's copy appends an English " - Copy" to the name.
+  disableDuplicate: true,
   access: { read: anyone, create: isAdmin, update: isAdmin, delete: isAdmin },
-  hooks: { afterChange: [renameDesigns], beforeDelete: [guardCategoryDelete] },
+  hooks: { beforeChange: [clearUnusedLimit], afterChange: [renameDesigns], beforeDelete: [guardCategoryDelete] },
   fields: [
     { name: "name", type: "text", required: true, unique: true, label: "Név" },
     {

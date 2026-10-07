@@ -32,6 +32,13 @@ function databaseUrl() {
 
 const smtpPort = Number(process.env.SMTP_PORT || 465);
 
+/**
+ * Refusals our hooks throw on purpose (DeleteRefusedError from cms/booking/guards.ts, BookingError from the booking
+ * rules) log at info, like Payload's own ValidationError. Payload types these keys as its own error names but looks up
+ * any error's `name`, hence the wider type.
+ */
+const expectedRefusals: Record<string, "info"> = { DeleteRefusedError: "info", BookingError: "info" };
+
 export default buildConfig({
   admin: {
     user: Users.slug,
@@ -70,6 +77,7 @@ export default buildConfig({
     : undefined,
   graphQL: { disable: true },
   i18n: { supportedLanguages: { hu }, fallbackLanguage: "hu" },
+  loggingLevels: expectedRefusals,
   secret: process.env.PAYLOAD_SECRET || "",
   sharp,
   // Payload otherwise runs `git config` and posts anonymous usage data on every init, test files included.

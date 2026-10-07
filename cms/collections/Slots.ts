@@ -50,7 +50,12 @@ export const Slots: CollectionConfig = {
         supportedTimezones: [{ label: "Budapest", value: TIME_ZONE }],
         // Budapest is the only zone and Payload fills it in; left required, the generated type would make every
         // slot create pass startsAt_tz. The admin's zone picker stays required: it follows startsAt's `required`.
-        override: ({ baseField }) => ({ ...baseField, required: false }),
+        override: ({ baseField }) => ({
+          ...baseField,
+          required: false,
+          label: "Időzóna",
+          admin: { ...baseField.admin, disableListColumn: true, disableListFilter: true },
+        }),
       },
       admin: {
         date: {

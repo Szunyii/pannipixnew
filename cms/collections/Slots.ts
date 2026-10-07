@@ -38,7 +38,7 @@ export const Slots: CollectionConfig = {
   access: { read: isAdmin, create: isAdmin, update: isAdmin, delete: isAdmin },
   hooks: { beforeChange: [setTitle], beforeDelete: [guardSlotDelete] },
   fields: [
-    { name: "title", type: "text", label: "Időpont", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Időpont", admin: { hidden: true, disableBulkEdit: true } },
     {
       name: "startsAt",
       type: "date",
@@ -54,7 +54,7 @@ export const Slots: CollectionConfig = {
           ...baseField,
           required: false,
           label: "Időzóna",
-          admin: { ...baseField.admin, disableListColumn: true, disableListFilter: true },
+          admin: { ...baseField.admin, disableListColumn: true, disableListFilter: true, disableBulkEdit: true },
         }),
       },
       admin: {

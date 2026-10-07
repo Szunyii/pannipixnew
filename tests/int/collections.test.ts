@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Forbidden, logError, type Payload } from "payload";
+import { Forbidden, logError, type Payload, type SelectField } from "payload";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createBooking,
@@ -182,5 +182,31 @@ describe("collections", () => {
     expect(await state(free.id)).toBe("Szabad");
     expect(await state(booked.id)).toBe("Foglalt");
     expect(await state(past.id)).toBe("Lejárt");
+  });
+
+  it("keeps internal fields out of the admin's bulk edit", () => {
+    // "Edit many" skips fields that are unique, readOnly, disabled, top-level hidden or disableBulkEdit, but not admin.hidden.
+    const field = (slug: "bookings" | "designs" | "slots", name: string) => {
+      const found = payload.collections[slug].config.flattenedFields.find((f) => f.name === name);
+      if (!found) throw new Error(`${slug}.${name} is not in the sanitized config`);
+      return found;
+    };
+
+    expect(field("bookings", "seat").admin).toMatchObject({
+      hidden: true,
+      disableBulkEdit: true,
+      disableListColumn: true,
+      disableListFilter: true,
+    });
+
+    // Payload adds the zone picker beside startsAt; the override relabels it and keeps it out of lists and bulk edit.
+    const timezone = field("slots", "startsAt_tz") as SelectField;
+    expect(timezone.label).toBe("Időzóna");
+    expect(timezone.required).toBeFalsy();
+    expect(timezone.admin).toMatchObject({ disableListColumn: true, disableListFilter: true, disableBulkEdit: true });
+
+    for (const slug of ["bookings", "designs", "slots"] as const) {
+      expect(field(slug, "title").admin).toMatchObject({ hidden: true, disableBulkEdit: true });
+    }
   });
 });

@@ -20,7 +20,7 @@ export const Bookings: CollectionConfig = {
   // Together with the unique slot this keeps simultaneous requests from overbooking (SQLite allows many NULLs).
   indexes: [{ fields: ["design", "seat"], unique: true }],
   fields: [
-    { name: "title", type: "text", label: "Foglalás", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Foglalás", admin: { hidden: true, disableBulkEdit: true } },
     {
       type: "row",
       fields: [
@@ -87,7 +87,8 @@ export const Bookings: CollectionConfig = {
       name: "seat",
       type: "number",
       label: "Sorszám (belső)",
-      admin: { hidden: true, disableListColumn: true, disableListFilter: true },
+      // "Edit many" still lists hidden fields; a bulk-set seat would clash with the unique (design, seat) index.
+      admin: { hidden: true, disableListColumn: true, disableListFilter: true, disableBulkEdit: true },
     },
     { name: "designName", type: "text", label: "Minta (foglaláskor)", admin: { readOnly: true, position: "sidebar" } },
     {

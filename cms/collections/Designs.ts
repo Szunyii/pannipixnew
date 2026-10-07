@@ -58,7 +58,7 @@ export const Designs: CollectionConfig = {
   indexes: [{ fields: ["category", "number"], unique: true }],
   hooks: { beforeChange: [prepareDesign], beforeDelete: [guardDesignDelete] },
   fields: [
-    { name: "title", type: "text", label: "Minta", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Minta", admin: { hidden: true, disableBulkEdit: true } },
     {
       type: "row",
       fields: [

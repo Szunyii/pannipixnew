@@ -4649,8 +4649,9 @@ describe("bookFlash", () => {
     expect(h.order).toEqual([]);
   });
 
-  it("TRUSTED_PROXY_HOPS=2 keys on the second entry from the right", async () => {
-    const bookFlash = await load("2");
+  // A value pasted with spaces around it still means what it says.
+  it.each([["2"], [" 2 "]])("TRUSTED_PROXY_HOPS=%j keys on the second entry from the right", async (value) => {
+    const bookFlash = await load(value);
     for (const real of ["203.0.113.9"]) {
       for (let i = 0; i < 3; i += 1) { h.xff = `${real}, 198.51.100.7`; await bookFlash(valid()); }
       h.xff = `${real}, 198.51.100.8`; // another CDN edge, same visitor
@@ -4742,9 +4743,10 @@ export type BookFlashState =
 // At most three bookings an hour from one visitor, so nobody can lock up the whole calendar.
 const limiter = createRateLimiter({ limit: 3, windowMs: 60 * 60 * 1000 });
 
-// Proxies in front of the app that append to X-Forwarded-For (see .env.example). Only an explicit 0 turns the limit
-// off: anything else that isn't plain digits ("-1", "0x2", "2abc", "") is a typo, and a typo must not do that.
-const hopsSetting = process.env.TRUSTED_PROXY_HOPS ?? "";
+// Proxies in front of the app that append to X-Forwarded-For (see .env.example). Spaces around the value don't count.
+// Only an explicit 0 turns the limit off: anything else that isn't plain digits ("-1", "0x2", "2abc", "") is a typo,
+// and a typo must not do that.
+const hopsSetting = (process.env.TRUSTED_PROXY_HOPS ?? "").trim();
 const trustedProxyHops = /^\d+$/.test(hopsSetting) ? Number(hopsSetting) : 1;
 
 // Neither line may carry an address or anything else about a visitor.
@@ -4805,7 +4807,7 @@ export async function bookFlash(formData: FormData): Promise<BookFlashState> {
 }
 ```
 
-Futtasd a tesztet: `npx vitest run tests/unit/book-flash.test.ts`. Expected: PASS (26 teszt).
+Futtasd a tesztet: `npx vitest run tests/unit/book-flash.test.ts`. Expected: PASS (27 teszt).
 
 - [ ] **Step 11: Lint, typecheck, teljes tesztkészlet**
 

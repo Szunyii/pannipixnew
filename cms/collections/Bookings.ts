@@ -2,6 +2,7 @@ import type { CollectionConfig, Where } from "payload";
 import { PLACEMENTS } from "@/lib/booking-input";
 import { STATUS_LABELS, relationId } from "@/lib/booking-rules";
 import { isAdmin } from "../access";
+import { prepareBooking } from "../booking/hooks";
 
 export const Bookings: CollectionConfig = {
   slug: "bookings",
@@ -19,6 +20,7 @@ export const Bookings: CollectionConfig = {
   access: { read: isAdmin, create: isAdmin, update: isAdmin, delete: isAdmin },
   // Together with the unique slot this keeps simultaneous requests from overbooking (SQLite allows many NULLs).
   indexes: [{ fields: ["design", "seat"], unique: true }],
+  hooks: { beforeChange: [prepareBooking] },
   fields: [
     { name: "title", type: "text", label: "Foglalás", admin: { hidden: true, disableBulkEdit: true } },
     {

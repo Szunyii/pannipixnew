@@ -93,7 +93,7 @@ function FlashCard({ design }: { design: FlashDesign }) {
         {!soldOut && (
           <button
             type="button"
-            onClick={() => openBooking(design.id)}
+            onClick={() => openBooking(design)}
             aria-label={`${name} – időpontfoglalás`}
             className="grid size-11 shrink-0 place-items-center rounded-[6px] border border-hairline bg-white transition-[background-color,border-color,color,scale] duration-300 hover:border-ink hover:bg-ink hover:text-paper active:scale-90 active:duration-75"
           >

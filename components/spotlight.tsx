@@ -152,7 +152,7 @@ function Detail({ design }: { design: FlashDesign }) {
               Hasonló egyedi tervet kérek <Arrow />
             </a>
           ) : (
-            <button type="button" onClick={() => openBooking(design.id)} className={`${btn.primary} w-full justify-between`}>
+            <button type="button" onClick={() => openBooking(design)} className={`${btn.primary} w-full justify-between`}>
               Időpontot foglalok <Arrow />
             </button>
           )}

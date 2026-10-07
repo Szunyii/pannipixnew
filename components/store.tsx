@@ -1,15 +1,19 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import type { FlashDesign } from "./data";
 
 type Store = {
   favorites: Set<number>;
   featured: number | null;
-  /** The design whose booking dialog is open, if any. */
-  bookingFor: number | null;
+  /**
+   * The design whose booking dialog is open, as it was when the dialog opened. The dialog shows this copy until it
+   * closes, so a refresh that changes the design or takes it off the page doesn't change or close it.
+   */
+  bookingFor: FlashDesign | null;
   toggleFavorite: (id: number) => void;
   feature: (id: number) => void;
-  openBooking: (id: number) => void;
+  openBooking: (design: FlashDesign) => void;
   closeBooking: () => void;
 };
 
@@ -32,11 +36,11 @@ export function StoreProvider({
 }) {
   const [favorites, setFavorites] = useState<Set<number>>(() => new Set());
   const [featured, setFeatured] = useState(initialFeatured);
-  const [bookingFor, setBookingFor] = useState<number | null>(null);
+  const [bookingFor, setBookingFor] = useState<FlashDesign | null>(null);
 
   const toggleFavorite = useCallback((id: number) => setFavorites((s) => toggled(s, id)), []);
   const feature = useCallback((id: number) => setFeatured(id), []);
-  const openBooking = useCallback((id: number) => setBookingFor(id), []);
+  const openBooking = useCallback((design: FlashDesign) => setBookingFor(design), []);
   const closeBooking = useCallback(() => setBookingFor(null), []);
 
   const value = useMemo(

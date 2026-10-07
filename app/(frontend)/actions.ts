@@ -1,6 +1,7 @@
 "use server";
 
 import config from "@payload-config";
+import { refresh } from "next/cache";
 import { headers } from "next/headers";
 import { type Payload, getPayload } from "payload";
 import type { PublicBookingCode } from "@/cms/booking/errors";
@@ -58,7 +59,7 @@ export async function bookFlash(formData: FormData): Promise<BookFlashState> {
     console.error("Booking form: Payload failed to start.", err);
     return { status: "error", code: "unknown" };
   }
-  // Bots fill the hidden field: tell them it worked and store nothing.
+  // Bots fill the hidden field: tell them it worked and store nothing (so there's nothing to re-render either).
   if (parsed.data.website) {
     payload.logger.warn("Booking form honeypot filled in; nothing stored.");
     return { status: "success" };
@@ -77,7 +78,12 @@ export async function bookFlash(formData: FormData): Promise<BookFlashState> {
   if (!result.ok) {
     // Only bookings that went through count against the limit.
     if (address) limiter.release(address);
+    // The design can't be booked any more: re-render the page too, so the cards and the spotlight stop offering it.
+    if (result.code === "sold_out" || result.code === "design_unavailable") refresh();
     return { status: "error", code: result.code };
   }
+  // The response then carries the re-rendered page with the new availability, together with the answer: the page is
+  // up to date by the time the dialog says "done", and no second request is needed.
+  refresh();
   return { status: "success" };
 }

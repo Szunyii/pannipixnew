@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   warn: vi.fn(),
   getPayload: vi.fn(),
   create: vi.fn(),
+  refresh: vi.fn(),
   order: [] as string[],
 }));
 
@@ -28,6 +29,8 @@ vi.mock("@/cms/booking/public", () => ({
 }));
 // The real config would load Payload's adapters; the action only hands it to the mocked getPayload.
 vi.mock("@payload-config", () => ({ default: {} }));
+// refresh() only works inside a real Server Action request.
+vi.mock("next/cache", () => ({ refresh: () => h.refresh() }));
 
 const valid = () => {
   const f = new FormData();
@@ -48,6 +51,7 @@ beforeEach(() => {
   h.xff = null;
   h.order.length = 0;
   h.warn.mockReset();
+  h.refresh.mockReset();
   h.create.mockReset().mockResolvedValue({ ok: true, bookingId: 1 });
   h.getPayload.mockReset().mockResolvedValue({ logger: { warn: h.warn, error: vi.fn() } });
 });
@@ -61,6 +65,50 @@ afterEach(() => {
 });
 
 describe("bookFlash", () => {
+  it.each([
+    ["a booking that went through", { ok: true, bookingId: 3 }, { status: "success" }],
+    ["a sold-out design", { ok: false, code: "sold_out" }, { status: "error", code: "sold_out" }],
+    ["a design taken off the site", { ok: false, code: "design_unavailable" }, { status: "error", code: "design_unavailable" }],
+  ])("re-renders the page in the same response after %s", async (_what, outcome, answer) => {
+    const bookFlash = await load();
+    h.create.mockResolvedValue(outcome);
+    expect(await bookFlash(valid())).toEqual(answer);
+    expect(h.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["a slot taken meanwhile", "slot_taken"],
+    ["a slot that has passed", "slot_past"],
+    ["an unknown failure", "unknown"],
+  ])("leaves the page as it is after %s", async (_what, code) => {
+    const bookFlash = await load();
+    h.create.mockResolvedValue({ ok: false, code });
+    expect(await bookFlash(valid())).toEqual({ status: "error", code });
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+
+  it("leaves the page as it is when nothing was booked: invalid input, the limit, a honeypot, Payload down", async () => {
+    const bookFlash = await load();
+    const bad = valid();
+    bad.set("email", "anna@");
+    expect(await bookFlash(bad)).toMatchObject({ status: "error", code: "invalid" });
+
+    const bot = valid();
+    bot.set("website", "spam.example");
+    expect(await bookFlash(bot)).toEqual({ status: "success" });
+
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    h.getPayload.mockRejectedValueOnce(new Error("db down"));
+    expect(await bookFlash(valid())).toEqual({ status: "error", code: "unknown" });
+    expect(h.refresh).not.toHaveBeenCalled();
+
+    h.xff = "203.0.113.9";
+    for (let i = 0; i < 3; i += 1) await bookFlash(valid());
+    expect(h.refresh).toHaveBeenCalledTimes(3);
+    expect(await bookFlash(valid())).toEqual({ status: "error", code: "rate_limited" });
+    expect(h.refresh).toHaveBeenCalledTimes(3);
+  });
+
   it("refuses the 4th booking of one visitor, however the visitor decorates the header", async () => {
     const bookFlash = await load();
     const results = [];

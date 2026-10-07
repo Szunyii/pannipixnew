@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { unstable_isUnrecognizedActionError, useRouter } from "next/navigation";
+import { unstable_isUnrecognizedActionError } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { type BookFlashState, bookFlash, getOpenSlots } from "@/app/(frontend)/actions";
 import { PLACEMENTS } from "@/lib/booking-input";
@@ -65,10 +65,7 @@ function TextField({
   );
 }
 
-function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => void }) {
-  const router = useRouter();
-  // Keep the header as it was when the dialog opened, even after the page refreshes availability.
-  const [snapshot] = useState(design);
+function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleId: string; onClose: () => void }) {
   const [step, setStep] = useState<Step>("slot");
   const [days, setDays] = useState<SlotDay[] | null>(null);
   const [loadError, setLoadError] = useState<"failed" | "outdated" | null>(null);
@@ -76,8 +73,14 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
   const [notice, setNotice] = useState<string | null>(null);
   const [result, setResult] = useState<Result>({ status: "idle" });
   const [pending, startTransition] = useTransition();
+  // Ids from useId, never fixed ones: they would clash with the page's (the contact section's heading is "booking-title").
   const placementId = useId();
   const noteId = useId();
+  const adultErrorId = useId();
+  const slotStepId = useId();
+  const detailsStepId = useId();
+  const doneId = useId();
+  const unavailableId = useId();
   const slotHeading = useRef<HTMLHeadingElement>(null);
   const detailsHeading = useRef<HTMLHeadingElement>(null);
   const doneHeading = useRef<HTMLHeadingElement>(null);
@@ -127,6 +130,8 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
     // The submit button stays enabled while sending (see there), so a second press ends here.
     if (pending) return;
     const formData = new FormData(event.currentTarget);
+    // The old answer goes while sending, so its alert comes back, and is read again, even when the new one is the same.
+    setResult({ status: "idle" });
     startTransition(async () => {
       // A rejected action (dropped connection, redeploy, server error) must not reach the page's error boundary:
       // the visitor keeps the form and gets a message instead.
@@ -136,15 +141,25 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
       } catch (err) {
         next = { status: "error", code: unstable_isUnrecognizedActionError(err) ? "outdated" : "unknown" };
       }
+      const end =
+        next.status === "success"
+          ? "done"
+          : next.status === "error" && (next.code === "sold_out" || next.code === "design_unavailable")
+            ? "unavailable"
+            : null;
+      if (end) {
+        // The action's response also re-rendered the page (bookFlash calls refresh()), and the router commits that in
+        // this transition. Updates after an await only join it when wrapped again: then this step shows up together
+        // with the new availability, so a button the booking takes away is already gone when the visitor can close.
+        const outcome = next;
+        startTransition(() => {
+          setResult(outcome);
+          setStep(end);
+        });
+        return;
+      }
       setResult(next);
-      if (next.status === "success") {
-        setStep("done");
-        router.refresh();
-      } else if (next.status === "error" && (next.code === "sold_out" || next.code === "design_unavailable")) {
-        // Nothing left to book here; the refresh stops the cards and the spotlight from offering it.
-        setStep("unavailable");
-        router.refresh();
-      } else if (next.status === "error" && (next.code === "slot_taken" || next.code === "slot_past")) {
+      if (next.status === "error" && (next.code === "slot_taken" || next.code === "slot_past")) {
         setNotice(ERROR_TEXT[next.code]);
         setSlot(null);
         setDays(null);
@@ -154,12 +169,11 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
     });
   }
 
-  const image = snapshot.images.find((i) => i.kind === "art") ?? snapshot.images[0];
-  const name = designName(snapshot);
+  const image = design.images.find((i) => i.kind === "art") ?? design.images[0];
+  const name = designName(design);
   const errors = result.status === "error" && result.code === "invalid" ? (result.fieldErrors ?? {}) : {};
   const formError =
-    result.status === "error" &&
-    !["invalid", "slot_taken", "slot_past", "sold_out", "design_unavailable"].includes(result.code)
+    result.status === "error" && !["slot_taken", "slot_past", "sold_out", "design_unavailable"].includes(result.code)
       ? ERROR_TEXT[result.code]
       : null;
 
@@ -172,11 +186,11 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
           </div>
           <div className="min-w-0 flex-1">
             <p className="label text-[0.6875rem] text-muted">Időpontfoglalás</p>
-            <h2 id="booking-title" className="mt-2 font-display text-[1.75rem] leading-tight">
+            <h2 id={titleId} className="mt-2 font-display text-[1.75rem] leading-tight">
               {name}
             </h2>
             <p className="mt-1 text-[0.9375rem] text-graphite">
-              {formatPrice(snapshot.price)} · {availabilityLabel(snapshot.availability)}
+              {formatPrice(design.price)} · {availabilityLabel(design.availability)}
             </p>
           </div>
           <button
@@ -194,21 +208,23 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
 
       <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-7 sm:px-8">
         {step === "done" ? (
-          <section aria-live="polite" className="py-2">
+          // Not a live region: it appears together with its text. Focus moves to the heading, which reads the summary too.
+          <section className="py-2">
             <span className="grid size-12 place-items-center rounded-full border border-ink">
               <Check size={22} />
             </span>
             <h3
               ref={doneHeading}
               tabIndex={-1}
+              aria-describedby={`${doneId}-booking ${doneId}-next`}
               className="mt-6 font-display text-[clamp(1.9rem,4vw,2.4rem)] leading-tight focus:outline-none"
             >
               Megkaptam a foglalásod.
             </h3>
-            <p className="mt-4 font-display text-[1.1875rem]">
+            <p id={`${doneId}-booking`} className="mt-4 font-display text-[1.1875rem]">
               {name} · {slot?.label}
             </p>
-            <p className="mt-4 max-w-[28rem] leading-[1.7] text-graphite">
+            <p id={`${doneId}-next`} className="mt-4 max-w-[28rem] leading-[1.7] text-graphite">
               Hamarosan átnézem, és e-mailben visszaigazolom. Ha nem találod a levelet, nézd meg a spam mappát is.
             </p>
             <button type="button" onClick={onClose} className={`${btn.primary} mt-9`}>
@@ -216,15 +232,16 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
             </button>
           </section>
         ) : step === "unavailable" ? (
-          <section aria-live="polite" className="py-2">
+          <section className="py-2">
             <h3
               ref={unavailableHeading}
               tabIndex={-1}
+              aria-describedby={`${unavailableId}-next`}
               className="font-display text-[clamp(1.9rem,4vw,2.4rem)] leading-tight focus:outline-none"
             >
               {result.status === "error" && ERROR_TEXT[result.code]}
             </h3>
-            <p className="mt-4 max-w-[28rem] leading-[1.7] text-graphite">
+            <p id={`${unavailableId}-next`} className="mt-4 max-w-[28rem] leading-[1.7] text-graphite">
               Nézz körül a többi minta között, vagy kérj egyedi tervet a saját ötletedből.
             </p>
             <button type="button" onClick={onClose} className={`${btn.primary} mt-9`}>
@@ -233,9 +250,9 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
           </section>
         ) : (
           <>
-            <section hidden={step !== "slot"} aria-labelledby="booking-slot-step">
+            <section hidden={step !== "slot"} aria-labelledby={slotStepId}>
               <h3
-                id="booking-slot-step"
+                id={slotStepId}
                 ref={slotHeading}
                 tabIndex={-1}
                 className="label text-muted focus:outline-none"
@@ -263,7 +280,7 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
                   </button>
                 </div>
               ) : days === null ? (
-                <p className="mt-6 text-graphite" aria-live="polite">
+                <p className="mt-6 text-graphite">
                   Időpontok betöltése…
                 </p>
               ) : days.length === 0 ? (
@@ -314,10 +331,10 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
             </section>
 
             {/* Stays mounted while the visitor goes back to change the time, so typed details survive. */}
-            <form ref={form} hidden={step !== "details"} onSubmit={submit} aria-labelledby="booking-details-step">
+            <form ref={form} hidden={step !== "details"} onSubmit={submit} aria-labelledby={detailsStepId}>
               <div className="flex items-center justify-between gap-4">
                 <h3
-                  id="booking-details-step"
+                  id={detailsStepId}
                   ref={detailsHeading}
                   tabIndex={-1}
                   className="label text-muted focus:outline-none"
@@ -334,13 +351,14 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
               </div>
               <p className="mt-3 font-display text-[1.25rem]">{slot?.label}</p>
 
-              <input type="hidden" name="designId" value={snapshot.id} />
+              <input type="hidden" name="designId" value={design.id} />
               <input type="hidden" name="slotId" value={slot?.id ?? ""} />
               {/* Honeypot: hidden from people and screen readers, tempting to bots. */}
               <div aria-hidden="true" className="absolute -left-[9999px] size-px overflow-hidden">
                 <label>
                   Weboldal
-                  <input type="text" name="website" tabIndex={-1} autoComplete="off" />
+                  {/* Password managers fill anything that looks fillable; a filled honeypot silently drops a real booking. */}
+                  <input type="text" name="website" tabIndex={-1} autoComplete="off" data-1p-ignore data-lpignore="true" />
                 </label>
               </div>
 
@@ -426,12 +444,12 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
                   name="adult"
                   required
                   aria-invalid={errors.adult ? true : undefined}
-                  aria-describedby={errors.adult ? "booking-adult-error" : undefined}
+                  aria-describedby={errors.adult ? adultErrorId : undefined}
                   className="size-[1.125rem] cursor-pointer accent-ink"
                 />
                 Elmúltam 18 éves.
               </label>
-              <ErrorText id="booking-adult-error">{errors.adult}</ErrorText>
+              <ErrorText id={adultErrorId}>{errors.adult}</ErrorText>
 
               {formError && (
                 <p role="alert" className="mt-6 border-l border-ink pl-4 text-[0.9375rem] leading-relaxed">
@@ -466,7 +484,7 @@ function BookingFlow({ design, onClose }: { design: FlashDesign; onClose: () => 
 
 /** What Tab could reach: where focus can go when the button that opened the dialog is gone. */
 const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])';
 
 /** The element's ancestors, nearest first, up to and including its <section>; none when it isn't in one. */
 function ancestorsUpToSection(el: HTMLElement | null): HTMLElement[] {
@@ -480,14 +498,11 @@ function ancestorsUpToSection(el: HTMLElement | null): HTMLElement[] {
   return chain;
 }
 
-export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
-  const { bookingFor, closeBooking } = useStore();
-  const found = designs.find((d) => d.id === bookingFor) ?? null;
-  // The design the dialog opened with. A refresh can take it off the page (an admin hid it) while the visitor is
-  // still reading why the booking can't go on, so the open dialog holds on to it until it is closed.
-  const [kept, setKept] = useState<FlashDesign | null>(null);
-  if (found && found.id !== kept?.id) setKept(found);
-  const design = found ?? (kept && kept.id === bookingFor ? kept : null);
+export function BookingDialog() {
+  // The store keeps the design as it was when the dialog opened, so a refresh that takes it off the page (an admin
+  // hid it) doesn't close the dialog while the visitor reads the outcome.
+  const { bookingFor: design, closeBooking } = useStore();
+  const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
   // The button that opened the dialog, and its ancestors up to its section. A booking can take the button off the
   // page (the design sells out); focus then goes to what took its place, close by, instead of jumping away.
@@ -520,19 +535,21 @@ export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
   return (
     <dialog
       ref={ref}
-      aria-labelledby="booking-title"
+      aria-labelledby={titleId}
       onClose={() => {
         closeBooking();
-        // The dialog hands focus back to its opener. If that button is gone, focus goes to the first thing Tab
-        // could reach in the nearest of its old containers still on the page; the collection's heading is the last resort.
-        requestAnimationFrame(() => {
-          if (opener.current?.isConnected) return;
-          for (const el of openerAncestors.current) {
-            const target = el.isConnected ? el.querySelector<HTMLElement>(FOCUSABLE) : null;
-            if (target) return target.focus();
+        // close() has already handed focus back to the opener, before this event. If that button is gone, focus goes
+        // to the first element that takes it in the nearest of its old containers still on the page; the collection's
+        // heading is the last resort. Trying each one in turn skips what can't take focus (hidden, inert).
+        if (opener.current?.isConnected) return;
+        for (const el of openerAncestors.current) {
+          if (!el.isConnected) continue;
+          for (const candidate of el.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+            candidate.focus();
+            if (document.activeElement === candidate) return;
           }
-          document.getElementById("flash-title")?.focus();
-        });
+        }
+        document.getElementById("flash-title")?.focus();
       }}
       onPointerDown={(e) => {
         pressedBackdrop.current = e.target === e.currentTarget;
@@ -543,9 +560,11 @@ export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
         if (e.target === e.currentTarget && pressedBackdrop.current) e.currentTarget.close();
         pressedBackdrop.current = false;
       }}
-      className="m-0 h-dvh max-h-none w-full max-w-none overflow-hidden bg-paper p-0 text-ink backdrop:bg-ink/45 sm:m-auto sm:h-fit sm:max-h-[min(54rem,calc(100dvh-4rem))] sm:w-[min(42rem,calc(100vw-4rem))] sm:rounded-[6px]"
+      // From sm up a panel pinned near the top, so it grows downwards as the slots arrive or the step changes,
+      // instead of re-centring and moving its header. Below sm a full-screen sheet.
+      className="m-0 h-dvh max-h-none w-full max-w-none overflow-hidden bg-paper p-0 text-ink backdrop:bg-ink/45 sm:mx-auto sm:mb-auto sm:mt-[max(2rem,10vh)] sm:h-fit sm:max-h-[min(54rem,calc(100dvh-max(2rem,10vh)-2rem))] sm:w-[min(42rem,calc(100vw-4rem))] sm:rounded-[6px]"
     >
-      {design && <BookingFlow key={design.id} design={design} onClose={() => ref.current?.close()} />}
+      {design && <BookingFlow key={design.id} design={design} titleId={titleId} onClose={() => ref.current?.close()} />}
     </dialog>
   );
 }

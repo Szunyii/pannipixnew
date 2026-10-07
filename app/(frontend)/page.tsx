@@ -41,7 +41,7 @@ export default async function Home() {
         <Booking />
       </main>
       <Footer />
-      <BookingDialog designs={designs} />
+      <BookingDialog />
     </StoreProvider>
   );
 }

@@ -169,8 +169,9 @@ describe("bookFlash", () => {
     expect(h.order).toEqual([]);
   });
 
-  it("TRUSTED_PROXY_HOPS=2 keys on the second entry from the right", async () => {
-    const bookFlash = await load("2");
+  // A value pasted with spaces around it still means what it says.
+  it.each([["2"], [" 2 "]])("TRUSTED_PROXY_HOPS=%j keys on the second entry from the right", async (value) => {
+    const bookFlash = await load(value);
     for (const real of ["203.0.113.9"]) {
       for (let i = 0; i < 3; i += 1) { h.xff = `${real}, 198.51.100.7`; await bookFlash(valid()); }
       h.xff = `${real}, 198.51.100.8`; // another CDN edge, same visitor

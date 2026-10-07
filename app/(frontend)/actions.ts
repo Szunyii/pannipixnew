@@ -19,9 +19,10 @@ export type BookFlashState =
 // At most three bookings an hour from one visitor, so nobody can lock up the whole calendar.
 const limiter = createRateLimiter({ limit: 3, windowMs: 60 * 60 * 1000 });
 
-// Proxies in front of the app that append to X-Forwarded-For (see .env.example). Only an explicit 0 turns the limit
-// off: anything else that isn't plain digits ("-1", "0x2", "2abc", "") is a typo, and a typo must not do that.
-const hopsSetting = process.env.TRUSTED_PROXY_HOPS ?? "";
+// Proxies in front of the app that append to X-Forwarded-For (see .env.example). Spaces around the value don't count.
+// Only an explicit 0 turns the limit off: anything else that isn't plain digits ("-1", "0x2", "2abc", "") is a typo,
+// and a typo must not do that.
+const hopsSetting = (process.env.TRUSTED_PROXY_HOPS ?? "").trim();
 const trustedProxyHops = /^\d+$/.test(hopsSetting) ? Number(hopsSetting) : 1;
 
 // Neither line may carry an address or anything else about a visitor.

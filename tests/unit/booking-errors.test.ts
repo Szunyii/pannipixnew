@@ -1,5 +1,5 @@
 import { ValidationError } from "payload";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BookingError, classifyBookingError } from "@/cms/booking/errors";
 
 const uniqueViolation = (path: string) =>
@@ -8,6 +8,22 @@ const uniqueViolation = (path: string) =>
 describe("classifyBookingError", () => {
   it("passes our own rule codes through", () => {
     expect(classifyBookingError(new BookingError("sold_out"))).toBe("sold_out");
+  });
+
+  it("passes the code through from a second copy of the module, as hot reload loads one", async () => {
+    vi.resetModules();
+    const copy = await import("@/cms/booking/errors");
+    const soldOut = new copy.BookingError("sold_out");
+    expect(soldOut).not.toBeInstanceOf(BookingError);
+    // Not a lost seat race (its path is "design"): that would be retried and end up "unknown".
+    expect(classifyBookingError(soldOut)).toBe("sold_out");
+    expect(classifyBookingError(new copy.BookingError("design_unavailable"))).toBe("design_unavailable");
+  });
+
+  it("doesn't take a code it doesn't know from an error that only has the name", () => {
+    const lookalike = Object.assign(uniqueViolation("design_id"), { name: "BookingError", code: "not_a_code" });
+    expect(classifyBookingError(lookalike)).toBe("seat_conflict");
+    expect(classifyBookingError({ name: "BookingError", code: "sold_out" })).toBe("unknown");
   });
 
   it("reads a lost race on the slot as a taken slot", () => {

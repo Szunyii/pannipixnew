@@ -52,11 +52,23 @@ export class BookingError extends ValidationError {
 export type PublicBookingCode = "design_unavailable" | "sold_out" | "slot_taken" | "slot_past" | "unknown";
 
 /**
+ * A BookingError, also when it comes from a second copy of this module: hot reload can load the class twice, and
+ * `instanceof` then fails. A sold-out design would read as a lost seat race, be retried and end up "unknown".
+ */
+function isBookingError(err: unknown): err is BookingError {
+  if (err instanceof BookingError) return true;
+  const code = (err as { code?: unknown } | null)?.code;
+  return (
+    err instanceof Error && err.name === "BookingError" && typeof code === "string" && Object.hasOwn(BOOKING_MESSAGES, code)
+  );
+}
+
+/**
  * Turns a failed create into a booking error code. Besides our own rules, SQLite's unique indexes
  * reject the loser of a race: on the slot (`slot_id`) or on the design's seat (`design_id`).
  */
 export function classifyBookingError(err: unknown): BookingErrorCode | "seat_conflict" | "unknown" {
-  if (err instanceof BookingError) return err.code;
+  if (isBookingError(err)) return err.code;
   const path = (err as { data?: { errors?: { path?: string }[] } } | null)?.data?.errors?.[0]?.path;
   if (path === "slot" || path === "slot_id") return "slot_taken";
   if (path === "design" || path === "design_id" || path === "seat") return "seat_conflict";

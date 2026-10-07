@@ -12,7 +12,11 @@ const faqs = [
   },
   {
     q: "Mi történik a flash mintával, miután elkészült?",
-    a: "Lekerül a kollekcióból, és többé nem tetoválom. Ezért egyszer elkészíthető minden darab.",
+    a: "Ez a kollekción múlik. Az egyszeri minta egy alkalom után lekerül a kínálatból, a limitált mintát a megadott számú alkalommal tetoválom, a többi bármikor foglalható.",
+  },
+  {
+    q: "Kell előre fizetnem a flash mintáért?",
+    a: "Nem. Az online foglalás nem vásárlás: most nem fizetsz semmit, a részleteket a visszaigazolásban egyeztetjük.",
   },
   {
     q: "Első tetoválásom lenne. Hol kezdjem?",

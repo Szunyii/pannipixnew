@@ -36,19 +36,19 @@ const steps: Record<Tab, { title: string; body: string }[]> = {
   flash: [
     {
       title: "Választás",
-      body: "Kiválasztod a mintát. Mindegyiknél látod az ajánlott méretet és testtájakat.",
+      body: "Kiválasztod a mintát. Mindegyiknél látod az ajánlott méretet, a testtájakat és azt, hányszor foglalható még.",
     },
     {
-      title: "Vásárlás",
-      body: "Megvásárlod a mintát, ezzel azonnal lekerül a kollekcióból.",
+      title: "Időpontfoglalás",
+      body: "Kiválasztasz egy szabad időpontot, és elküldöd a foglalást. Most nem fizetsz semmit.",
     },
     {
-      title: "Időpont",
-      body: "Egyeztetjük az időpontot és a pontos elhelyezést a testtájadon.",
+      title: "Visszaigazolás",
+      body: "Átnézem a foglalást, és e-mailben visszaigazolom. Ekkor egyeztetjük a pontos elhelyezést is.",
     },
     {
       title: "Tetoválás",
-      body: "Elkészül a tetoválás, a minta pedig véglegesen archívumba kerül.",
+      body: "Elkészül a tetoválás. Az egyszeri minták ezután véglegesen archívumba kerülnek.",
     },
   ],
 };

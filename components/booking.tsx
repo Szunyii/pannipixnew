@@ -1,10 +1,9 @@
 "use client";
 
 import { useId, useState } from "react";
+import { PLACEMENTS } from "@/lib/booking-input";
 import { ChevronDown, Instagram, Mail } from "./icons";
 import { Arrow, btn, container } from "./ui";
-
-type Mode = "egyedi" | "flash";
 
 const field =
   "mt-1.5 block w-full border-0 border-b border-paper/25 bg-transparent pb-3 pt-2 text-[1.0625rem] text-paper placeholder:text-ash/60 transition-colors focus:border-paper focus:outline-none";
@@ -25,10 +24,7 @@ function Field({
   );
 }
 
-const placements = ["Alkar", "Felkar", "Comb", "Lábszár", "Hát", "Oldal", "Gerinc", "Más testtáj"];
-
 export function Booking() {
-  const [mode, setMode] = useState<Mode>("egyedi");
   const [sent, setSent] = useState(false);
   const [placement, setPlacement] = useState("");
   const ideaId = useId();
@@ -46,8 +42,8 @@ export function Booking() {
             Kezdjük a te <em>mintáddal.</em>
           </h2>
           <p className="mt-7 max-w-[25rem] leading-[1.7] text-ash">
-            Írd le, mit szeretnél. Flash mintánál elég a minta száma, például P’CONs #027. Pár napon belül
-            válaszolok.
+            Írd le, mit szeretnél, és pár napon belül válaszolok. Flash mintára közvetlenül a mintánál tudsz
+            időpontot foglalni.
           </p>
           <ul className="mt-12 space-y-1 border-t border-paper/15 pt-6">
             <li>
@@ -70,62 +66,23 @@ export function Booking() {
           }}
           className="lg:pt-3"
         >
-          <fieldset>
-            <legend className="label text-[0.6875rem] text-ash">Mit szeretnél?</legend>
-            <div className="mt-4 grid grid-cols-2 gap-1 rounded-[8px] bg-paper/[0.07] p-1 sm:inline-flex">
-              {(
-                [
-                  ["egyedi", "Egyedi tetoválás"],
-                  ["flash", "Flash minta"],
-                ] as const
-              ).map(([value, label]) => (
-                <label
-                  key={value}
-                  className="relative flex h-11 cursor-pointer select-none items-center justify-center whitespace-nowrap rounded-[6px] px-3 font-display text-base text-ash transition-[background-color,color,scale] duration-300 active:scale-[0.97] active:duration-75 sm:px-5 sm:text-[1.0625rem] has-checked:bg-paper has-checked:text-ink has-focus-visible:outline has-focus-visible:outline-1 has-focus-visible:outline-offset-2 has-focus-visible:outline-paper"
-                >
-                  <input
-                    type="radio"
-                    name="mode"
-                    value={value}
-                    checked={mode === value}
-                    onChange={() => setMode(value)}
-                    className="sr-only"
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <div className="mt-12 grid gap-x-10 gap-y-10 sm:grid-cols-2">
+          <p className="label text-[0.6875rem] text-ash">Egyedi tetoválás</p>
+          <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2">
             <Field label="Név" name="name" autoComplete="name" autoCapitalize="words" enterKeyHint="next" required />
             <Field label="E-mail" name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next" required />
 
-            {mode === "flash" ? (
-              <Field
-                label="Minta száma"
-                name="design"
-                placeholder="pl. P’CONs #027"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                enterKeyHint="next"
-                className="sm:col-span-2"
+            <div className="sm:col-span-2">
+              <label htmlFor={ideaId} className="label text-[0.6875rem] text-ash">
+                Az ötleted
+              </label>
+              <textarea
+                id={ideaId}
+                name="idea"
+                rows={3}
+                placeholder="Mi foglalkoztat? Egy emlék, egy szimbólum, egy hangulat…"
+                className={`${field} resize-none leading-[1.6]`}
               />
-            ) : (
-              <div className="sm:col-span-2">
-                <label htmlFor={ideaId} className="label text-[0.6875rem] text-ash">
-                  Az ötleted
-                </label>
-                <textarea
-                  id={ideaId}
-                  name="idea"
-                  rows={3}
-                  placeholder="Mi foglalkoztat? Egy emlék, egy szimbólum, egy hangulat…"
-                  className={`${field} resize-none leading-[1.6]`}
-                />
-              </div>
-            )}
+            </div>
 
             <div>
               <label htmlFor={placeId} className="label text-[0.6875rem] text-ash">
@@ -142,9 +99,9 @@ export function Booking() {
                   <option value="" disabled className="text-ink">
                     Válassz
                   </option>
-                  {placements.map((p) => (
-                    <option key={p} className="text-ink">
-                      {p}
+                  {PLACEMENTS.map((p) => (
+                    <option key={p.value} value={p.value} className="text-ink">
+                      {p.label}
                     </option>
                   ))}
                 </select>

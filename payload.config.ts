@@ -58,7 +58,7 @@ export default buildConfig({
     busyTimeout: 5000,
     // In production, pending migrations run once per process, when Payload initialises: on the first request that uses
     // it, not at `next start`. Never during `next build`: if a page ever started Payload at build time, the build would
-    // fail on a missing table instead of migrating whatever database the build machine points at.
+    // at most read the database the build machine points at (and fail on a missing table), never migrate it.
     prodMigrations: isProductionRuntime ? migrations : undefined,
   }),
   // Without SMTP settings Payload logs each email to the console instead of sending it.

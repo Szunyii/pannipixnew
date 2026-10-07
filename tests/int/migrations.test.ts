@@ -21,11 +21,11 @@ async function query(db: Db, sql: string, ...args: string[]) {
 
 /**
  * What is compared, per table: each column's name, type, NOT NULL, PK and default; each index's name, whether it is
- * unique and its columns in order (plain and unique indexes alike); each foreign key's columns and its ON UPDATE and
- * ON DELETE actions. SQLite's own tables are left out.
+ * unique and its columns in order (plain and unique indexes alike); each foreign key's columns, the table it points at
+ * and its ON UPDATE and ON DELETE actions. SQLite's own tables are left out.
  * Not compared: the order of the columns, and details only the CREATE statement shows (CHECK, COLLATE, AUTOINCREMENT,
- * a partial index's WHERE). Payload's SQLite builder doesn't emit those; AUTOINCREMENT only with the adapter's
- * `autoIncrement` option, which is off.
+ * a DESC index column, a partial index's WHERE). Payload's SQLite builder doesn't emit those; AUTOINCREMENT only
+ * with the adapter's `autoIncrement` option, which is off.
  */
 async function describeSchema(db: Db) {
   const tables = await query(

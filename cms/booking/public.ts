@@ -45,6 +45,9 @@ export async function createPublicBooking(payload: Payload, input: BookingInput)
         },
         context: { publicBooking: true },
         overrideAccess: true,
+        // The emails read only the booking's own fields. Populating the design and slot after the insert is extra work
+        // that could fail once the row is stored, and the visitor would then see an error for a booking that exists.
+        depth: 0,
       });
       return { ok: true, bookingId: booking.id };
     } catch (err) {

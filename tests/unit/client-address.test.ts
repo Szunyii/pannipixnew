@@ -28,9 +28,22 @@ describe("clientAddress", () => {
     ["a private address", "10.1.2.3"],
     ["another private range", "172.20.0.5"],
     ["a unique-local IPv6 address", "fd00::1"],
+    ["a carrier-grade NAT address, where a host's own proxies may sit", "100.64.1.2"],
+    ["the first address of the carrier-grade NAT range", "100.64.0.0"],
+    ["the last address of the carrier-grade NAT range", "100.127.255.255"],
+    ["one near the end of the carrier-grade NAT range", "100.127.255.254"],
+    ["one in the middle of the carrier-grade NAT range", "100.100.100.100"],
+    ["an IPv4-mapped carrier-grade NAT address", "::ffff:100.64.1.2"],
   ])("has no address for %s", (_what, header) => {
     expect(clientAddress(header)).toBeNull();
   });
+
+  it.each(["100.63.0.1", "100.128.0.1", "100.0.0.1", "100.200.1.1"])(
+    "keeps %s, which lies outside the carrier-grade NAT range",
+    (address) => {
+      expect(clientAddress(address)).toBe(address);
+    },
+  );
 
   it("reads an IPv4-mapped address as the IPv4 one", () => {
     expect(clientAddress("::ffff:203.0.113.9")).toBe("203.0.113.9");

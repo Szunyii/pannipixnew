@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   xff: null as string | null,
@@ -40,8 +40,7 @@ const valid = () => {
 
 async function load(hops?: string) {
   vi.resetModules();
-  if (hops === undefined) delete process.env.TRUSTED_PROXY_HOPS;
-  else process.env.TRUSTED_PROXY_HOPS = hops;
+  vi.stubEnv("TRUSTED_PROXY_HOPS", hops);
   return (await import("@/app/(frontend)/actions")).bookFlash;
 }
 
@@ -51,6 +50,14 @@ beforeEach(() => {
   h.warn.mockReset();
   h.create.mockReset().mockResolvedValue({ ok: true, bookingId: 1 });
   h.getPayload.mockReset().mockResolvedValue({ logger: { warn: h.warn, error: vi.fn() } });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  // tests/setup.ts stubs NODE_ENV too, and unstubAllEnvs took that stub away with the rest.
+  vi.stubEnv("NODE_ENV", "test");
 });
 
 describe("bookFlash", () => {
@@ -64,6 +71,22 @@ describe("bookFlash", () => {
     expect(results.map((r) => r.status)).toEqual(["success", "success", "success", "error"]);
     expect(results[3]).toEqual({ status: "error", code: "rate_limited" });
     expect(h.create).toHaveBeenCalledTimes(3);
+    // Everything works as set up: nothing to warn about.
+    expect(h.warn).not.toHaveBeenCalled();
+  });
+
+  it("keeps counting a booking for an hour: still refused after 59 minutes, allowed again after 61", async () => {
+    // Only the clock is faked, and before load(): the limiter reads the clock it finds when the module starts.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const bookFlash = await load();
+    h.xff = "203.0.113.9";
+    for (let i = 0; i < 3; i += 1) expect(await bookFlash(valid())).toEqual({ status: "success" });
+
+    vi.advanceTimersByTime(59 * 60_000);
+    expect(await bookFlash(valid())).toEqual({ status: "error", code: "rate_limited" });
+
+    vi.advanceTimersByTime(2 * 60_000);
+    expect(await bookFlash(valid())).toEqual({ status: "success" });
   });
 
   it("keeps visitors apart", async () => {
@@ -106,13 +129,32 @@ describe("bookFlash", () => {
     for (let i = 0; i < 3; i += 1) expect(await bookFlash(valid())).toEqual({ status: "success" });
   });
 
-  it("does not use up the limit when Payload fails to start", async () => {
+  it("returns an error value instead of throwing when Payload fails to start, and does not use up the limit", async () => {
     const bookFlash = await load();
     h.xff = "203.0.113.9";
-    h.getPayload.mockRejectedValue(new Error("db down"));
-    for (let i = 0; i < 5; i += 1) await expect(bookFlash(valid())).rejects.toThrow("db down");
+    // Payload has no logger yet, so the action writes to the console.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const cause = new Error("db down");
+    h.getPayload.mockRejectedValue(cause);
+    for (let i = 0; i < 5; i += 1) expect(await bookFlash(valid())).toEqual({ status: "error", code: "unknown" });
+    expect(logged).toHaveBeenCalledTimes(5);
+    expect(logged.mock.calls[0]).toContain(cause);
+    expect(JSON.stringify(logged.mock.calls)).not.toMatch(/203\.0\.113|anna|example\.com|\+36/i);
     h.getPayload.mockResolvedValue({ logger: { warn: h.warn, error: vi.fn() } });
     for (let i = 0; i < 3; i += 1) expect(await bookFlash(valid())).toEqual({ status: "success" });
+  });
+
+  it.each([
+    ["nothing", undefined],
+    ["null", null],
+    ["a string", "designId=12&slotId=4"],
+    ["a plain object", { designId: "12", slotId: "4" }],
+    ["a list of pairs", [["designId", "12"], ["slotId", "4"]]],
+  ])("answers %s instead of a form with 'invalid', and does not touch Payload", async (_what, argument) => {
+    const bookFlash = await load();
+    // A Server Function can be called with anything, whatever its type says.
+    expect(await bookFlash(argument as unknown as FormData)).toEqual({ status: "error", code: "invalid", fieldErrors: {} });
+    expect(h.order).toEqual([]);
   });
 
   it("reads Payload before it takes a slot, and rejects invalid input before touching Payload", async () => {
@@ -136,16 +178,55 @@ describe("bookFlash", () => {
     }
   });
 
-  it("TRUSTED_PROXY_HOPS=0 switches the limit off", async () => {
+  it("TRUSTED_PROXY_HOPS=0 switches the limit off, and says so once", async () => {
     const bookFlash = await load("0");
     h.xff = "6.6.6.6, 203.0.113.9";
     for (let i = 0; i < 6; i += 1) expect(await bookFlash(valid())).toEqual({ status: "success" });
+    expect(h.warn).toHaveBeenCalledTimes(1);
+    expect(h.warn.mock.calls[0]).toEqual(["Booking limit is off: TRUSTED_PROXY_HOPS is 0 (see .env.example)."]);
+    expect(JSON.stringify(h.warn.mock.calls)).not.toMatch(/6\.6\.6\.6|203\.0\.113|anna|example\.com/i);
   });
 
-  it.each([[""], ["abc"]])("TRUSTED_PROXY_HOPS=%j falls back to one hop", async (value) => {
+  // Only an explicit 0 may switch the limit off, so every typo must mean the default. The first entry differs on
+  // every request, like a visitor's spoofed header: a typo read as 2 would key on it and never refuse anyone.
+  it.each([[""], ["abc"], ["-1"], ["0x2"], ["2abc"]])("TRUSTED_PROXY_HOPS=%j falls back to one hop", async (value) => {
     const bookFlash = await load(value);
-    h.xff = "6.6.6.6, 203.0.113.9";
-    for (let i = 0; i < 3; i += 1) await bookFlash(valid());
-    expect(await bookFlash(valid())).toEqual({ status: "error", code: "rate_limited" });
+    const results = [];
+    for (const spoof of ["1.1.1.1", "2.2.2.2", "3.3.3.3", "4.4.4.4"]) {
+      h.xff = `${spoof}, 203.0.113.9`;
+      results.push(await bookFlash(valid()));
+    }
+    expect(results).toEqual([
+      { status: "success" },
+      { status: "success" },
+      { status: "success" },
+      { status: "error", code: "rate_limited" },
+    ]);
+    expect(h.warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a private hop", "10.0.0.7"],
+    ["the socket address Next fills in when the proxy sent nothing", "::ffff:127.0.0.1"],
+    ["no forwarded header at all", null],
+  ])("warns once, without any address, when there is no usable visitor address: %s", async (_what, xff) => {
+    const bookFlash = await load();
+    h.xff = xff;
+    for (let i = 0; i < 4; i += 1) expect(await bookFlash(valid())).toEqual({ status: "success" });
+    expect(h.warn.mock.calls).toEqual([
+      ["Booking limit skipped: no usable visitor address in X-Forwarded-For; check TRUSTED_PROXY_HOPS (see README)."],
+    ]);
+    expect(JSON.stringify(h.warn.mock.calls)).not.toMatch(/10\.0\.0\.7|127\.0\.0\.1|anna|example\.com/i);
+  });
+
+  it("warns when the first request without a usable address comes, however many good ones came before it", async () => {
+    const bookFlash = await load();
+    h.xff = "203.0.113.9";
+    await bookFlash(valid());
+    expect(h.warn).not.toHaveBeenCalled();
+    h.xff = "10.0.0.7";
+    await bookFlash(valid());
+    await bookFlash(valid());
+    expect(h.warn).toHaveBeenCalledTimes(1);
   });
 });

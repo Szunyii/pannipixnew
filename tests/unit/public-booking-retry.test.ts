@@ -98,12 +98,14 @@ describe("createPublicBooking", () => {
     expect(error).toHaveBeenCalledTimes(1);
   });
 
-  it("sends every attempt as a pending website booking", async () => {
+  it("sends every attempt as a pending website booking that loads no relations afterwards", async () => {
     const { payload, create } = fakePayload(seatConflict(), { id: 7 });
     await createPublicBooking(payload, input);
     for (const [args] of create.mock.calls) {
       expect(args).toMatchObject({
         collection: "bookings",
+        // The emails read the booking's own fields; loading the design and slot after the insert could only fail late.
+        depth: 0,
         context: { publicBooking: true },
         overrideAccess: true,
         data: { design: 12, slot: 4, status: "pending", note: null, adultConfirmed: true },

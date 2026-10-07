@@ -46,6 +46,17 @@ describe("getFlashCatalog", () => {
     expect(designs[1].images[0].src).toMatch(/^\/api\/media\/file\//);
   });
 
+  it("lists the collections by their order field, not by when they were created", async () => {
+    const first = await createCategory(payload, "single");
+    const second = await createCategory(payload, "unlimited");
+    // Created first, but moved behind the other one.
+    await payload.update({ collection: "categories", id: first.id, data: { order: (second.order ?? 0) + 1 } });
+
+    const { categories } = await getFlashCatalog();
+
+    expect(categories.map((c) => c.name)).toEqual([second.name, first.name]);
+  });
+
   it("frees a seat again once the booking is rejected", async () => {
     const design = await createDesign(payload, (await createCategory(payload, "single")).id);
     const booking = await createBooking(payload, design.id, (await createSlot(payload)).id);
@@ -56,6 +67,8 @@ describe("getFlashCatalog", () => {
 });
 
 describe("listOpenSlots", () => {
+  const openSlotIds = async () => (await listOpenSlots()).flatMap((day) => day.slots.map((slot) => slot.id));
+
   it("offers only future slots nobody holds, grouped by day", async () => {
     const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
     const free = await createSlot(payload);
@@ -63,7 +76,17 @@ describe("listOpenSlots", () => {
     await createSlot(payload, { past: true });
     await createBooking(payload, design.id, held.id);
 
-    const days = await listOpenSlots();
-    expect(days.flatMap((d) => d.slots.map((s) => s.id))).toEqual([free.id]);
+    expect(await openSlotIds()).toEqual([free.id]);
+  });
+
+  it("offers a slot again once the booking that held it is rejected", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+    const slot = await createSlot(payload);
+    const booking = await createBooking(payload, design.id, slot.id);
+    expect(await openSlotIds()).toEqual([]);
+
+    await payload.update({ collection: "bookings", id: booking.id, data: { status: "rejected" } });
+
+    expect(await openSlotIds()).toEqual([slot.id]);
   });
 });

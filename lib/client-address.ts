@@ -1,7 +1,11 @@
 import { isIP } from "node:net";
 
-/** Loopback, private, link-local and unspecified addresses: a hop inside the host's own network, not a visitor. */
-const INTERNAL = /^(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|0\.|::1?$|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i;
+/**
+ * Loopback, private, carrier-grade NAT (100.64.0.0/10), link-local and unspecified addresses: a hop inside the host's
+ * own network, not a visitor.
+ */
+const INTERNAL =
+  /^(?:127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|169\.254\.|0\.|::1?$|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/i;
 
 /** An IPv6 visitor can pick any address in their /64, so that prefix is what identifies them. */
 function ipv6Prefix(ip: string) {

@@ -1823,7 +1823,7 @@ export const Designs: CollectionConfig = {
   indexes: [{ fields: ["category", "number"], unique: true }],
   hooks: { beforeChange: [prepareDesign], beforeDelete: [guardDesignDelete] },
   fields: [
-    { name: "title", type: "text", label: "Minta", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Minta", admin: { hidden: true, disableBulkEdit: true } },
     {
       type: "row",
       fields: [
@@ -1957,7 +1957,7 @@ export const Slots: CollectionConfig = {
   access: { read: isAdmin, create: isAdmin, update: isAdmin, delete: isAdmin },
   hooks: { beforeChange: [setTitle], beforeDelete: [guardSlotDelete] },
   fields: [
-    { name: "title", type: "text", label: "Időpont", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Időpont", admin: { hidden: true, disableBulkEdit: true } },
     {
       name: "startsAt",
       type: "date",
@@ -1973,7 +1973,7 @@ export const Slots: CollectionConfig = {
           ...baseField,
           required: false,
           label: "Időzóna",
-          admin: { ...baseField.admin, disableListColumn: true, disableListFilter: true },
+          admin: { ...baseField.admin, disableListColumn: true, disableListFilter: true, disableBulkEdit: true },
         }),
       },
       admin: {
@@ -2022,7 +2022,7 @@ export const Bookings: CollectionConfig = {
   // Together with the unique slot this keeps simultaneous requests from overbooking (SQLite allows many NULLs).
   indexes: [{ fields: ["design", "seat"], unique: true }],
   fields: [
-    { name: "title", type: "text", label: "Foglalás", admin: { hidden: true } },
+    { name: "title", type: "text", label: "Foglalás", admin: { hidden: true, disableBulkEdit: true } },
     {
       type: "row",
       fields: [
@@ -2089,7 +2089,8 @@ export const Bookings: CollectionConfig = {
       name: "seat",
       type: "number",
       label: "Sorszám (belső)",
-      admin: { hidden: true, disableListColumn: true, disableListFilter: true },
+      // "Edit many" still lists hidden fields; a bulk-set seat would clash with the unique (design, seat) index.
+      admin: { hidden: true, disableListColumn: true, disableListFilter: true, disableBulkEdit: true },
     },
     { name: "designName", type: "text", label: "Minta (foglaláskor)", admin: { readOnly: true, position: "sidebar" } },
     {
@@ -2246,7 +2247,7 @@ export function publicInput(designId: number, slotId: number): BookingInput {
 ```ts
 import fs from "node:fs";
 import path from "node:path";
-import { Forbidden, logError, type Payload } from "payload";
+import { Forbidden, logError, type Payload, type SelectField } from "payload";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createBooking,
@@ -2429,6 +2430,32 @@ describe("collections", () => {
     expect(await state(booked.id)).toBe("Foglalt");
     expect(await state(past.id)).toBe("Lejárt");
   });
+
+  it("keeps internal fields out of the admin's bulk edit", () => {
+    // "Edit many" skips fields that are unique, readOnly, disabled, top-level hidden or disableBulkEdit, but not admin.hidden.
+    const field = (slug: "bookings" | "designs" | "slots", name: string) => {
+      const found = payload.collections[slug].config.flattenedFields.find((f) => f.name === name);
+      if (!found) throw new Error(`${slug}.${name} is not in the sanitized config`);
+      return found;
+    };
+
+    expect(field("bookings", "seat").admin).toMatchObject({
+      hidden: true,
+      disableBulkEdit: true,
+      disableListColumn: true,
+      disableListFilter: true,
+    });
+
+    // Payload adds the zone picker beside startsAt; the override relabels it and keeps it out of lists and bulk edit.
+    const timezone = field("slots", "startsAt_tz") as SelectField;
+    expect(timezone.label).toBe("Időzóna");
+    expect(timezone.required).toBeFalsy();
+    expect(timezone.admin).toMatchObject({ disableListColumn: true, disableListFilter: true, disableBulkEdit: true });
+
+    for (const slug of ["bookings", "designs", "slots"] as const) {
+      expect(field(slug, "title").admin).toMatchObject({ hidden: true, disableBulkEdit: true });
+    }
+  });
 });
 ```
 
@@ -2438,7 +2465,7 @@ describe("collections", () => {
 npx vitest run tests/int/collections.test.ts
 ```
 
-Expected: PASS (14 teszt). Ha a séma push-a a `bookings` összetett indexén bukik el (`indexes` → `design`, `seat`), az index építésénél a relationship mező oszlopa (`design_id`) nem oldódott fel. Ilyenkor az `indexes` sor helyett a `payload.config.ts` `sqliteAdapter` hívásában add hozzá ugyanezt az indexet az `afterSchemaInit` hookkal (`uniqueIndex("bookings_design_seat_idx").on(table.design, table.seat)`, a `@payloadcms/db-sqlite/drizzle/sqlite-core`-ból), majd futtasd újra.
+Expected: PASS (15 teszt). Ha a séma push-a a `bookings` összetett indexén bukik el (`indexes` → `design`, `seat`), az index építésénél a relationship mező oszlopa (`design_id`) nem oldódott fel. Ilyenkor az `indexes` sor helyett a `payload.config.ts` `sqliteAdapter` hívásában add hozzá ugyanezt az indexet az `afterSchemaInit` hookkal (`uniqueIndex("bookings_design_seat_idx").on(table.design, table.seat)`, a `@payloadcms/db-sqlite/drizzle/sqlite-core`-ból), majd futtasd újra.
 
 - [ ] **Step 11: Lint, typecheck, teljes tesztkészlet**
 

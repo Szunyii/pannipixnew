@@ -5586,6 +5586,7 @@ EOF
 - Create: `components/booking-dialog.tsx`
 - Create: `app/(frontend)/error.tsx`
 - Modify: `app/(frontend)/page.tsx`
+- Modify: `components/flash-collection.tsx` (a `#flash-title` fókuszálható legyen)
 
 - [ ] **Step 1: `components/booking-dialog.tsx`: a teljes tartalom**
 
@@ -6016,12 +6017,17 @@ export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
   const { bookingFor, closeBooking } = useStore();
   const design = designs.find((d) => d.id === bookingFor) ?? null;
   const ref = useRef<HTMLDialogElement>(null);
+  // The button that opened the dialog. A booking can remove it from the page (the design sells out).
+  const opener = useRef<HTMLElement | null>(null);
 
   // The store decides whether the native dialog is open; Esc and the close button report back via onClose.
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (design && !dialog.open) dialog.showModal();
+    if (design && !dialog.open) {
+      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      dialog.showModal();
+    }
     if (!design && dialog.open) dialog.close();
   }, [design]);
 
@@ -6038,7 +6044,13 @@ export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
     <dialog
       ref={ref}
       aria-labelledby="booking-title"
-      onClose={closeBooking}
+      onClose={() => {
+        closeBooking();
+        // The dialog hands focus back to its opener; if that button is gone, land on the collection's heading.
+        requestAnimationFrame(() => {
+          if (!opener.current?.isConnected) document.getElementById("flash-title")?.focus();
+        });
+      }}
       onClick={(e) => {
         // A click on the backdrop lands on the dialog element itself.
         if (e.target === e.currentTarget) e.currentTarget.close();
@@ -6050,6 +6062,10 @@ export function BookingDialog({ designs }: { designs: FlashDesign[] }) {
   );
 }
 ```
+
+- [ ] **Step 1a: A flash szekció címe fogadhasson fókuszt**
+
+A `components/flash-collection.tsx`-ben az `<h2 id="flash-title" …>` kapjon `tabIndex={-1}`-et, és a `className`-je egészüljön ki a `focus:outline-none` osztállyal. Ide kerül a fókusz, ha a foglalási ablakot megnyitó gomb közben eltűnt.
 
 - [ ] **Step 1b: Végső védőháló: `app/(frontend)/error.tsx`**
 
@@ -6106,7 +6122,7 @@ Expected: nincs hiba. Ha a `react-hooks` szabálycsomag a `useEffect(loadSlots, 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add components/booking-dialog.tsx "app/(frontend)/page.tsx" "app/(frontend)/error.tsx"
+git add components/booking-dialog.tsx components/flash-collection.tsx "app/(frontend)/page.tsx" "app/(frontend)/error.tsx"
 git commit -m "$(cat <<'EOF'
 feat: booking dialog with open slots, details form and confirmation
 

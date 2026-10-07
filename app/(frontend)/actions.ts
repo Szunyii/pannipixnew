@@ -83,7 +83,8 @@ export async function bookFlash(formData: FormData): Promise<BookFlashState> {
     return { status: "error", code: result.code };
   }
   // The response then carries the re-rendered page with the new availability, together with the answer: the page is
-  // up to date by the time the dialog says "done", and no second request is needed.
+  // up to date by the time the dialog says "done", and no second request is needed. Next applies it as a push
+  // navigation, so with a #hash in the address (left by an in-page link) Back first returns to that hash.
   refresh();
   return { status: "success" };
 }

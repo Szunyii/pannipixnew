@@ -73,7 +73,7 @@ function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleI
   const [notice, setNotice] = useState<string | null>(null);
   const [result, setResult] = useState<Result>({ status: "idle" });
   const [pending, startTransition] = useTransition();
-  // Ids from useId, never fixed ones: they would clash with the page's (the contact section's heading is "booking-title").
+  // Ids from useId, never fixed ones: a fixed id could clash with one elsewhere on the page.
   const placementId = useId();
   const noteId = useId();
   const adultErrorId = useId();

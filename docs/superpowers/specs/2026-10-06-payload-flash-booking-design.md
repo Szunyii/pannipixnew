@@ -176,7 +176,7 @@ A levelek a Bookings `afterChange` hookjából mennek. Ha a küldés nem sikerü
 |---|---|---|
 | Nyilvános létrehozás | admin (`ADMIN_EMAIL`) | ügyféladatok, minta, időpont, link: `${SITE_URL}/admin/collections/bookings/{id}` |
 | Létrehozás `pending` állapotban | ügyfél | „Megkaptam a foglalásod”: minta, időpont, ár, „hamarosan visszaigazolom” |
-| Váltás `confirmed`-re (vagy létrehozás így) | ügyfél | „Jóváhagyva”: végleges időpont, minta, ár |
+| Váltás `confirmed`-re (vagy létrehozás így) | ügyfél | „Visszaigazolva”: végleges időpont, minta, ár |
 | Váltás `rejected`-re | ügyfél | rövid, udvarias elutasítás, link a mintákhoz |
 | Váltás `cancelled`-re | ügyfél | a lemondás visszaigazolása |
 

@@ -225,6 +225,9 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
 }
 
 export async function down({ db, payload, req }: MigrateDownArgs): Promise<void> {
+  // Children before their parents: SQLite checks foreign keys on DROP and migrations run without a transaction, so a failed down would leave a half-dropped database.
+  await db.run(sql`DROP TABLE \`payload_locked_documents_rels\`;`)
+  await db.run(sql`DROP TABLE \`payload_preferences_rels\`;`)
   await db.run(sql`DROP TABLE \`bookings\`;`)
   await db.run(sql`DROP TABLE \`slots\`;`)
   await db.run(sql`DROP TABLE \`designs_images\`;`)
@@ -235,8 +238,6 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   await db.run(sql`DROP TABLE \`users\`;`)
   await db.run(sql`DROP TABLE \`payload_kv\`;`)
   await db.run(sql`DROP TABLE \`payload_locked_documents\`;`)
-  await db.run(sql`DROP TABLE \`payload_locked_documents_rels\`;`)
   await db.run(sql`DROP TABLE \`payload_preferences\`;`)
-  await db.run(sql`DROP TABLE \`payload_preferences_rels\`;`)
   await db.run(sql`DROP TABLE \`payload_migrations\`;`)
 }

@@ -1,8 +1,9 @@
-import type { Availability } from "@/lib/booking-rules";
+import type { Availability, BookingRule } from "@/lib/booking-rules";
 import { formatPrice } from "@/lib/format";
-import type { FlashDesign } from "@/lib/flash-types";
+import type { FlashCategory, FlashDesign } from "@/lib/flash-types";
 
 export { formatPrice };
+export type { BookingRule };
 export type { DesignImage, FlashCategory, FlashDesign } from "@/lib/flash-types";
 
 export const styles = ["Conceptual", "Abstract", "Microrealism"] as const;
@@ -26,4 +27,18 @@ export function priceRange(designs: FlashDesign[]) {
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   return min === max ? formatPrice(min) : `${formatPrice(min).replace(" Ft", "")} – ${formatPrice(max)}`;
+}
+
+/** The rule every collection books by; null when they differ or there are none. */
+export function sharedRule(categories: readonly Pick<FlashCategory, "rule">[]): BookingRule | null {
+  const rule = categories[0]?.rule;
+  return rule && categories.every((c) => c.rule === rule) ? rule : null;
+}
+
+const ruleNames: Record<BookingRule, string> = { single: "Egyszeri", limited: "Limitált", unlimited: "Korlátlan" };
+
+/** How often a flash design can be booked, in a word or two for the services overview. */
+export function ruleSummary(categories: readonly Pick<FlashCategory, "rule">[]) {
+  const rule = sharedRule(categories);
+  return rule ? ruleNames[rule] : "Kollekciónként eltérő";
 }

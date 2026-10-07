@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { type DesignImage, type FlashDesign, designName, formatPrice } from "./data";
+import { type BookingRule, type DesignImage, type FlashDesign, designName, formatPrice } from "./data";
 import { ChevronLeft, ChevronRight, Heart, Plus, Resize, Sparkle, Torso } from "./icons";
 import { useStore } from "./store";
 import { Arrow, Pcons, StyleTags, btn, container } from "./ui";
@@ -54,7 +54,7 @@ function ruleFact({ rule, limit, remaining, soldOut }: FlashDesign["availability
   if (rule === "single") {
     return {
       term: "Egyszeri minta",
-      body: soldOut ? "Ez a minta már gazdára talált, többé nem tetoválom." : "Ez a design csak egyszer készül el.",
+      body: soldOut ? "Ez a minta már gazdára talált." : "Ez a design csak egyszer készül el.",
     };
   }
   if (rule === "limited") {
@@ -65,14 +65,26 @@ function ruleFact({ rule, limit, remaining, soldOut }: FlashDesign["availability
         : `Összesen ${limit} alkalommal készül el, ebből még ${remaining} foglalható.`,
     };
   }
-  return { term: "Bármikor foglalható", body: "Ez a minta többször is elkészülhet." };
+  return { term: "Korlátlanul foglalható", body: "Ez a minta többször is elkészülhet." };
+}
+
+const bookingSteps =
+  "Kiválasztasz egy szabad időpontot, és elküldöd a foglalást. Most nem fizetsz semmit: átnézem a foglalást, és e-mailben visszaigazolom.";
+
+/** The booking steps, and what a booking takes from the offer under the collection's rule. */
+function howItWorks(rule: BookingRule) {
+  if (rule === "single") return `${bookingSteps} A foglalással a minta lekerül a kínálatból.`;
+  if (rule === "limited") return `${bookingSteps} A foglalással a minta egy alkalma lekerül a kínálatból.`;
+  return bookingSteps;
 }
 
 function Detail({ design }: { design: FlashDesign }) {
   const { favorites, toggleFavorite, openBooking } = useStore();
   const [active, setActive] = useState(0);
+  // A refresh keeps the picked view but can bring fewer images; past the end, show the first.
+  const current = active < design.images.length ? active : 0;
   const name = designName(design);
-  const image = design.images[active];
+  const image = design.images[current];
   const saved = favorites.has(design.id);
   const { soldOut } = design.availability;
   const fact = ruleFact(design.availability);
@@ -81,7 +93,7 @@ function Detail({ design }: { design: FlashDesign }) {
     <div className="mt-8 grid gap-12 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:gap-20">
       <div>
         <div className="relative aspect-[4/5] overflow-hidden rounded-[3px] bg-stencil">
-          <Picture key={image.src} image={image} sizes="(min-width: 1024px) 48vw, 92vw" />
+          <Picture key={image.src} image={image} sizes="(min-width: 1440px) 700px, (min-width: 1024px) 48vw, 92vw" />
           {soldOut && (
             <span className="label absolute left-4 top-4 rounded-[3px] bg-paper px-2.5 py-2 text-[0.625rem]">Elkelt</span>
           )}
@@ -91,14 +103,15 @@ function Detail({ design }: { design: FlashDesign }) {
           <div role="group" aria-label="Nézetek" className="mt-3 grid grid-cols-3 gap-3">
             {design.images.map((img, i) => (
               <button
-                key={img.src}
+                // By position: the same image can be attached twice.
+                key={i}
                 type="button"
                 onClick={() => setActive(i)}
-                aria-pressed={active === i}
+                aria-pressed={current === i}
                 aria-label={img.label}
                 className="relative aspect-[5/6] overflow-hidden rounded-[3px] border border-transparent bg-stencil transition-[border-color,scale] duration-200 hover:border-ash active:scale-[0.97] aria-pressed:border-ink"
               >
-                <Picture image={img} sizes="16vw" thumb />
+                <Picture image={img} sizes="(min-width: 1024px) 230px, 30vw" thumb />
               </button>
             ))}
           </div>
@@ -149,8 +162,9 @@ function Detail({ design }: { design: FlashDesign }) {
             aria-pressed={saved}
             className={`${btn.outline} w-full`}
           >
+            {/* The label stays put; aria-pressed and the filled heart carry the state. */}
             <Heart size={18} filled={saved} />
-            {saved ? "Elmentve" : "Mentés későbbre"}
+            Mentés későbbre
           </button>
         </div>
 
@@ -161,10 +175,7 @@ function Detail({ design }: { design: FlashDesign }) {
               "Fontos információk",
               "A méret csak kis mértékben módosítható, hogy a részletek tiszták maradjanak. Kisebb változtatásokat, például egy elem elhagyását, a konzultáción egyeztetünk.",
             ],
-            [
-              "Hogyan működik?",
-              "Kiválasztasz egy szabad időpontot, és elküldöd a foglalást. Most nem fizetsz semmit: átnézem a foglalást, és e-mailben visszaigazolom. A foglalással a minta egy alkalma lekerül a kínálatból.",
-            ],
+            ["Hogyan működik?", howItWorks(design.availability.rule)],
           ].map(([title, body]) => (
             <details key={title} className="border-b border-hairline">
               <summary className="label flex items-center justify-between py-5 text-[0.75rem]">

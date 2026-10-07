@@ -49,7 +49,7 @@ const customService = {
   visual: <Construction />,
 };
 
-function flashService(price: string | null) {
+function flashService(price: string | null, rule: string) {
   return {
     id: "flash-minta",
     label: "Flash minták",
@@ -58,7 +58,7 @@ function flashService(price: string | null) {
     facts: [
       ["Ár", price ?? "Mintánként megadva"],
       ["Méret", "Mintánként megadva"],
-      ["Alkalmak", "Kollekciónként eltérő"],
+      ["Alkalmak", rule],
     ],
     cta: { href: "#flash", label: "Flash minták böngészése", style: btn.outline },
     visual: (
@@ -74,8 +74,9 @@ function flashService(price: string | null) {
   };
 }
 
-export function Paths({ flashPrice }: { flashPrice: string | null }) {
-  const services = [customService, flashService(flashPrice)];
+/** `flashRule` is the "Alkalmak" fact: the booking rule the collections share, or that it varies. */
+export function Paths({ flashPrice, flashRule }: { flashPrice: string | null; flashRule: string }) {
+  const services = [customService, flashService(flashPrice, flashRule)];
   return (
     <section id="tattoo" data-nav="tattoo" aria-labelledby="paths-title" className="relative">
       <div className={`${container} relative pb-28 pt-12 lg:pb-40 lg:pt-16`}>

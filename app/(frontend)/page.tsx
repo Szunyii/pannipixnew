@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 import { About } from "@/components/about";
 import { Booking } from "@/components/booking";
-import { priceRange } from "@/components/data";
+import { priceRange, ruleSummary } from "@/components/data";
 import { Faq } from "@/components/faq";
 import { FlashCollection } from "@/components/flash-collection";
 import { Footer } from "@/components/footer";
@@ -17,9 +17,11 @@ export default async function Home() {
   // Rendered per request so availability is always current, and the build never touches the database.
   await connection();
   const { categories, designs } = await getFlashCatalog();
+  // Designs come newest first: the spotlight opens on the newest one that can still be booked, else the newest.
+  const featured = designs.find((d) => !d.availability.soldOut) ?? designs[0];
 
   return (
-    <StoreProvider initialFeatured={designs[0]?.id ?? null}>
+    <StoreProvider initialFeatured={featured?.id ?? null}>
       <a
         href="#main"
         className="label sr-only z-60 rounded-[5px] bg-ink px-4 py-3 text-paper focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
@@ -29,7 +31,7 @@ export default async function Home() {
       <Header />
       <main id="main">
         <Hero />
-        <Paths flashPrice={priceRange(designs)} />
+        <Paths flashPrice={priceRange(designs)} flashRule={ruleSummary(categories)} />
         <FlashCollection designs={designs} categories={categories} />
         <Spotlight designs={designs} />
         <Process />

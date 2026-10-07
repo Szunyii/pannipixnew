@@ -245,10 +245,11 @@ Natív `<dialog>` fókuszkezeléssel és Esc-re zárással. Mobilon teljes képe
 
 ## 10. Seed (`npm run seed`)
 
-- Csak üres adatbázison fut: ha már van kollekció, kilép.
+- Csak üres adatbázison fut: ha már van kollekció, kilép. Ha egy korábbi futás félbeszakadt, a kilépő üzenet elmondja a teendőt: friss adatbázis és média mappa.
+- Éles módban (`NODE_ENV=production`) nem fut: még a Payload indítása előtt hibával kilép, így egy friss éles adatbázist sem tölthet fel helyőrzőkkel.
 - Létrehozza a 3 kollekciót **helyőrző szabállyal**: P’CONs = egyszeri, ORNX = limitált (3), daddywillhateus = korlátlan.
 - Feltölti a jelenlegi 8 helyőrző mintát a `/public/flash` képekkel és a mostani alt szövegekkel. A „021” elkelt állapota egy múltbeli időponton lévő `completed` foglalásból jön.
-- Felvesz néhány jövőbeli szabad időpontot a következő hetekre.
+- Felvesz 12 jövőbeli szabad időpontot a következő három hétre (kedden és csütörtökön, 10:00-kor és 15:00-kor, budapesti idő szerint). Az #021 demó foglalása `archiv@example.com` címre szól, nem valódi postafiókra.
 
 ## 11. Konfiguráció és üzembe helyezés
 

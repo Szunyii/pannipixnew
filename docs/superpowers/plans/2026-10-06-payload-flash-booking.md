@@ -6562,15 +6562,24 @@ EOF
 - [ ] **Step 1: `scripts/seed.ts`**
 
 ```ts
+// Fills an empty development database with the placeholder flash collections, designs and open time slots.
+// Development only: it refuses to run in production, and skips a database that already has collections.
+// After a run that stopped partway, start over with a fresh database and media folder (by default .data/).
 import path from "node:path";
 import config from "@payload-config";
 import { getPayload } from "payload";
+import { isProductionRuntime } from "@/cms/env";
 import { dayKey, zonedTimeToUtc } from "@/lib/time";
+
+// Placeholder content is for development databases; this runs before Payload starts, so nothing connects or migrates.
+if (isProductionRuntime) throw new Error("The seed only runs on development databases (NODE_ENV is production).");
 
 const payload = await getPayload({ config });
 
 if ((await payload.count({ collection: "categories" })).totalDocs > 0) {
-  payload.logger.info("Seed skipped: the database already has collections.");
+  payload.logger.info(
+    "Seed skipped: the database already has collections. If an earlier run stopped partway, delete the database and the media folder (by default .data/) and run it again.",
+  );
   process.exit(0);
 }
 
@@ -6710,27 +6719,27 @@ for (let offset = 1; offset <= 21; offset += 1) {
   }
 }
 
-// #021 is already on skin: a completed booking on a past slot keeps it sold out.
+// #021 is already on skin: a completed booking on a past slot keeps it sold out. Its address is on a reserved
+// domain, so cancelling it with SMTP configured can't email a real mailbox.
+const soldId = designIds.get("021");
+if (!soldId) throw new Error("No placeholder #021 to mark as sold.");
 const past = await payload.create({
   collection: "slots",
   data: { startsAt: zonedTimeToUtc(dayKey(new Date(Date.now() - 30 * 86_400_000)), "10:00") },
 });
-const soldId = designIds.get("021");
-if (soldId) {
-  await payload.create({
-    collection: "bookings",
-    data: {
-      design: soldId,
-      slot: past.id,
-      status: "completed",
-      name: "Archív foglalás",
-      email: "hello@pannipix.hu",
-      phone: "+36 00 000 0000",
-      placement: "alkar",
-      adultConfirmed: true,
-    },
-  });
-}
+await payload.create({
+  collection: "bookings",
+  data: {
+    design: soldId,
+    slot: past.id,
+    status: "completed",
+    name: "Archív foglalás",
+    email: "archiv@example.com",
+    phone: "+36 00 000 0000",
+    placement: "alkar",
+    adultConfirmed: true,
+  },
+});
 
 payload.logger.info(`Seed done: 3 collections, ${placeholders.length} designs, ${opened} open slots.`);
 process.exit(0);
@@ -6746,7 +6755,7 @@ DATABASE_URL="file:$QA/pannipix.db" MEDIA_DIR="$QA/media" SMTP_HOST= npm run see
 sqlite3 "$QA/pannipix.db" "select count(*) from categories; select count(*) from designs; select count(*) from slots; select status from bookings;"
 ```
 
-Expected: a napló végén `Seed done: 3 collections, 8 designs, 12 open slots.` (a nyitott időpontok száma 12 körül mozog, a héten belüli naptól függően). Az SQL kimenete: `3`, `8`, a nyitott időpontok száma + 1, majd `completed`.
+Expected: a napló végén `Seed done: 3 collections, 8 designs, 12 open slots.` (mindig 12: 21 egymást követő napban mindig 3 kedd és 3 csütörtök van). Az SQL kimenete: `3`, `8`, `13` (a 12 szabad és a múltbeli időpont), majd `completed`.
 
 - [ ] **Step 3: A seed második futtatása kihagyja az üres adatbázisra szánt feltöltést**
 
@@ -6754,7 +6763,16 @@ Expected: a napló végén `Seed done: 3 collections, 8 designs, 12 open slots.`
 DATABASE_URL="file:$QA/pannipix.db" MEDIA_DIR="$QA/media" SMTP_HOST= npm run seed 2>&1 | grep "Seed skipped"
 ```
 
-Expected: `Seed skipped: the database already has collections.`
+Expected: `Seed skipped: the database already has collections. If an earlier run stopped partway, delete the database and the media folder (by default .data/) and run it again.`
+
+Éles módban a seed el sem indítja a Payloadot:
+
+```bash
+NODE_ENV=production DATABASE_URL="file:$QA/prod/pannipix.db" MEDIA_DIR="$QA/prod/media" npm run seed; echo "exit $?"
+ls "$QA/prod"
+```
+
+Expected: `The seed only runs on development databases (NODE_ENV is production).` és `exit 1`. A `$QA/prod` mappa üres: sem adatbázis, sem média nem jön létre (a mappát a config importja hozza létre).
 
 - [ ] **Step 4: Typecheck, commit**
 

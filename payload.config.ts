@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { sqliteAdapter } from "@payloadcms/db-sqlite";
 import { nodemailerAdapter } from "@payloadcms/email-nodemailer";
 import { hu } from "@payloadcms/translations/languages/hu";
-import { buildConfig } from "payload";
+import { buildConfig, defaultLoggerOptions } from "payload";
 import sharp from "sharp";
 import { Bookings } from "./cms/collections/Bookings";
 import { Categories } from "./cms/collections/Categories";
@@ -77,6 +77,9 @@ export default buildConfig({
     : undefined,
   graphQL: { disable: true },
   i18n: { supportedLanguages: { hu }, fallbackLanguage: "hu" },
+  // Under Vitest only warnings and errors print: the console email adapter logs an INFO line per email, and the suite
+  // books dozens of times. The destination is Payload's own, so the output keeps its usual look.
+  logger: process.env.VITEST ? { options: { level: "warn" }, destination: defaultLoggerOptions } : undefined,
   loggingLevels: expectedRefusals,
   secret: process.env.PAYLOAD_SECRET || "",
   sharp,

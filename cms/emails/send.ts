@@ -23,7 +23,8 @@ const builders: Record<BookingEmailKind, (d: BookingEmailData) => EmailContent> 
 
 /**
  * Starts the booking's emails without waiting for them: a slow mail server must not hold up the
- * visitor or the admin. A failed send is logged and never undoes the booking.
+ * visitor or the admin. An email that fails to build, start or send is logged and skipped: it never
+ * undoes the booking or keeps the other emails from going out.
  */
 export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
   doc,
@@ -58,18 +59,24 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
   for (const kind of kinds) {
     const toAdmin = kind === "admin-new";
     if (toAdmin && !adminEmail) continue;
-    const { subject, html, text } = builders[kind](data);
-    req.payload
-      .sendEmail({
-        to: toAdmin ? adminEmail : doc.email,
-        replyTo: toAdmin ? doc.email : adminEmail,
-        subject,
-        html,
-        text,
-      })
-      .catch((err: unknown) => {
-        req.payload.logger.error({ err, msg: `Booking email "${kind}" for booking ${doc.id} failed` });
-      });
+    const failed = (err: unknown) => {
+      req.payload.logger.error({ err, msg: `Booking email "${kind}" for booking ${doc.id} failed` });
+    };
+    try {
+      const { subject, html, text } = builders[kind](data);
+      req.payload
+        .sendEmail({
+          to: toAdmin ? adminEmail : doc.email,
+          replyTo: toAdmin ? doc.email : adminEmail,
+          subject,
+          html,
+          text,
+        })
+        .catch(failed);
+    } catch (err) {
+      // Building the email or handing it to the mail adapter threw at once, before any promise existed.
+      failed(err);
+    }
   }
   return doc;
 };

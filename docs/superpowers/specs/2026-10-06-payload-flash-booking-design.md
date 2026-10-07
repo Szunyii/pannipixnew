@@ -129,6 +129,7 @@ Nyilvános foglalás kizárólag a server actionön keresztül jöhet létre (Lo
 - **Aktív**: `pending`, `confirmed`, `completed`. Leköti az időpontot és a minta egy alkalmát.
 - **Felszabadított**: `rejected`, `cancelled`. A hook `slot = null` és `seat = null` értéket állít be; a pillanatképek megmaradnak.
 - Felszabadított foglalás nem állítható vissza aktívra. Hibaüzenet: „Elutasított vagy lemondott foglalás nem aktiválható újra — hozz létre új foglalást.” A két felszabadított állapot között szabad a váltás.
+- Új foglalás nem jöhet létre eleve elutasított vagy lemondott állapotban. Hibaüzenet: „Új foglalás csak Függőben, Jóváhagyva vagy Elkészült állapotban hozható létre.”
 
 ### 6.2 Foglalhatóság
 

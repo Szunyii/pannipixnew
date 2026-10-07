@@ -3420,6 +3420,7 @@ import {
   type BookingEmailKind,
   adminNewBookingEmail,
   bookingEmailsFor,
+  customerConfirmedEmail,
   customerReceivedEmail,
   customerRejectedEmail,
   escapeHtml,
@@ -3458,6 +3459,13 @@ describe("templates", () => {
     const { text, html } = customerReceivedEmail(data);
     expect(text).toContain(`${PAYMENT_NOTE} Ha kérdésed van, válaszolj erre a levélre.`);
     expect(html).toContain(PAYMENT_NOTE);
+  });
+
+  it("tells a confirmed customer that the details, such as the exact placement, are settled by reply, as the site promises", () => {
+    const { text, html } = customerConfirmedEmail(data);
+    const note = "A részleteket, például a pontos elhelyezést, válaszlevélben egyeztetjük.";
+    expect(text).toContain(note);
+    expect(html).toContain(note);
   });
 
   it("gives the admin the customer's details with a link, and never raw HTML from the form", () => {
@@ -3890,6 +3898,7 @@ export function customerConfirmedEmail(d: BookingEmailData): EmailContent {
     greeting(d),
     { p: "Visszaigazolom a foglalásodat, várlak!" },
     details(d),
+    { p: "A részleteket, például a pontos elhelyezést, válaszlevélben egyeztetjük." },
     { p: "Ha mégsem tudsz jönni, kérlek, minél előbb válaszolj erre a levélre." },
     signature,
   ]);
@@ -4088,7 +4097,7 @@ A `hooks` sort cseréld erre:
 npx vitest run tests/unit/email-templates.test.ts tests/int/emails.test.ts
 ```
 
-Expected: PASS (13 teszt).
+Expected: PASS (41 teszt).
 
 - [ ] **Step 8: Lint, typecheck, teljes tesztkészlet**
 
@@ -4111,7 +4120,7 @@ EOF
 ```
 
 > **Az átnézés után (commit `b09b37d`):** a fenti blokkok a végleges kódot mutatják. Ezen felül:
-> - `lib/copy.ts`: `PAYMENT_NOTE`, a fizetésről szóló közös mondat. Az e-mail és a foglalási ablak (Task 13) is ezt használja.
+> - `lib/copy.ts`: `PAYMENT_NOTE`, a fizetésről szóló közös mondat. A „megkaptam” e-mail, a foglalási ablak (Task 13) és a GYIK (Task 14) is ezt használja; a doc kommentje felsorolja, hol.
 > - `cms/env.ts`: `siteUrl()` és az exportált `isProductionRuntime`. A `Users.ts` jelszó-visszaállító linkje is a `siteUrl()`-t használja.
 > - `payload.config.ts` `onInit`: élesben figyelmeztet, ha hiányzik az `ADMIN_EMAIL`, a `SITE_URL` vagy az `SMTP_HOST`.
 > - `lib/booking-input.ts`: link jellegű nevet nem fogad el.
@@ -6357,23 +6366,23 @@ A `steps` objektumban cseréld le a teljes `flash: [ ... ],` tömböt erre:
     },
     {
       title: "Tetoválás",
-      body: "Elkészül a tetoválás. Az egyszeri minták ezután véglegesen archívumba kerülnek.",
+      body: "Elkészül a tetoválás. Ha ez volt a minta utolsó alkalma, véglegesen lekerül a kínálatból.",
     },
   ],
 ```
 
 - [ ] **Step 2: `components/faq.tsx`: flash kérdések**
 
-A `faqs` tömbben cseréld le a `"Mi történik a flash mintával, miután elkészült?"` elemet erre a kettőre:
+A fájl elejére vedd fel az `import { PAYMENT_NOTE } from "@/lib/copy";` sort (a fizetésről szóló mondat így egy helyen él), majd a `faqs` tömbben cseréld le a `"Mi történik a flash mintával, miután elkészült?"` elemet erre a kettőre:
 
 ```tsx
   {
     q: "Mi történik a flash mintával, miután elkészült?",
-    a: "Ez a kollekción múlik. Az egyszeri minta egy alkalom után lekerül a kínálatból, a limitált mintát a megadott számú alkalommal tetoválom, a többi bármikor foglalható.",
+    a: "Ez a kollekción múlik. Az egyszeri minta egy alkalom után lekerül a kínálatból, a limitált mintát a megadott számú alkalommal tetoválom, a korlátlanul foglalható mintát pedig bármennyiszer.",
   },
   {
     q: "Kell előre fizetnem a flash mintáért?",
-    a: "Nem. Az online foglalás nem vásárlás: most nem fizetsz semmit, a részleteket a visszaigazolásban egyeztetjük.",
+    a: `Nem. ${PAYMENT_NOTE}`,
   },
 ```
 
@@ -6410,7 +6419,7 @@ function Field({
 
 export function Booking() {
   const [sent, setSent] = useState(false);
-  const [placement, setPlacement] = useState("");
+  const formTitleId = useId();
   const ideaId = useId();
   const placeId = useId();
 
@@ -6444,13 +6453,14 @@ export function Booking() {
         </div>
 
         <form
+          aria-labelledby={formTitleId}
           onSubmit={(e) => {
             e.preventDefault();
             setSent(true);
           }}
           className="lg:pt-3"
         >
-          <p className="label text-[0.6875rem] text-ash">Egyedi tetoválás</p>
+          <p id={formTitleId} className="label text-[0.6875rem] text-ash">Egyedi tetoválás</p>
           <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2">
             <Field label="Név" name="name" autoComplete="name" autoCapitalize="words" enterKeyHint="next" required />
             <Field label="E-mail" name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next" required />
@@ -6476,9 +6486,8 @@ export function Booking() {
                 <select
                   id={placeId}
                   name="placement"
-                  value={placement}
-                  onChange={(e) => setPlacement(e.target.value)}
-                  className={`${field} cursor-pointer appearance-none pr-8 ${placement ? "" : "text-ash/60"}`}
+                  defaultValue=""
+                  className={`${field} cursor-pointer appearance-none pr-8`}
                 >
                   <option value="" disabled className="text-ink">
                     Válassz
@@ -6520,7 +6529,7 @@ export function Booking() {
 A `description` értékét cseréld erre:
 
 ```tsx
-    "Konceptuális, absztrakt és mikrorealista tetoválások. Egyedi tervezés, vagy időpontra foglalható flash minták a PANNIPIX kollekciókból.",
+    "Konceptuális, absztrakt és mikrorealista tetoválások. Egyedi tervezés vagy időpontra foglalható flash minták a PANNIPIX kollekciókból.",
 ```
 
 - [ ] **Step 5: Lint, typecheck, tesztek**

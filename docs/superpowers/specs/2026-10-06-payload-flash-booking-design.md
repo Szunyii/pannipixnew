@@ -8,7 +8,7 @@
 A flash minták ma be vannak égetve a kódba (`components/data.ts`), és a felület vásárlást sugall (kosár, „Megvásárlod a mintát”). A cél:
 
 - Az admin a Payload CMS felületén kezeli a flash mintákat, a kollekciókat és a szabad időpontokat.
-- A látogató **időpontot foglal** egy mintára az admin által megadott időpontok közül. Ez nem vásárlás: az ár tájékoztató, az oldalon nincs fizetés.
+- A látogató **időpontot foglal** egy mintára az admin által megadott időpontok közül. Ez nem vásárlás: az ár ki van írva, de az oldalon nincs fizetés.
 - Minden kollekció saját szabálya dönti el, hányszor foglalható egy mintája.
 
 ## 2. Meghozott döntések
@@ -176,7 +176,7 @@ A levelek a Bookings `afterChange` hookjából mennek. Ha a küldés nem sikerü
 |---|---|---|
 | Nyilvános létrehozás | admin (`ADMIN_EMAIL`) | ügyféladatok, minta, időpont, link: `${SITE_URL}/admin/collections/bookings/{id}` |
 | Létrehozás `pending` állapotban | ügyfél | „Megkaptam a foglalásod”: minta, időpont, ár, „hamarosan visszaigazolom” |
-| Váltás `confirmed`-re (vagy létrehozás így) | ügyfél | „Visszaigazolva”: végleges időpont, minta, ár |
+| Váltás `confirmed`-re (vagy létrehozás így) | ügyfél | „Visszaigazolva”: végleges időpont, minta, ár, és hogy a részleteket (pl. a pontos elhelyezést) válaszlevélben egyeztetjük |
 | Váltás `rejected`-re | ügyfél | rövid, udvarias elutasítás, link a mintákhoz |
 | Váltás `cancelled`-re | ügyfél | a lemondás visszaigazolása |
 
@@ -301,7 +301,7 @@ SMTP_PASS=
 
 ## 14. Pontosításra váró pontok
 
-- A fizetésről szóló mondat (9.3/1). Ha a fizetés máshogy működik (pl. foglalóval), igazítani kell. A pontos mondat a `lib/copy.ts` `PAYMENT_NOTE` konstansa (e-mail és foglalási ablak). Változatai a GYIK-ben, a Folyamat lépéseiben és a Kiemelt rész „Hogyan működik?” blokkjában vannak.
+- A fizetésről szóló mondat (9.3/1). Ha a fizetés máshogy működik (pl. foglalóval), igazítani kell. A pontos mondat a `lib/copy.ts` `PAYMENT_NOTE` konstansa; szó szerint idézi a „megkaptam” e-mail, a foglalási ablak és a GYIK. Rövidebb változatai a Folyamat lépéseiben és a Kiemelt rész „Hogyan működik?” blokkjában vannak.
 - A kollekciók valódi szabályai. A seed csak helyőrző értékeket tölt be.
 - Az SMTP fiók adatai és az admin értesítési címe (élesítéskor).
 

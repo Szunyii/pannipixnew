@@ -6821,7 +6821,7 @@ A `sqliteAdapter({...})` hívásba a `busyTimeout: 5000,` után (az `isProductio
 ```ts
     // In production, pending migrations run once per process, when Payload initialises: on the first request that uses
     // it, not at `next start`. Never during `next build`: if a page ever started Payload at build time, the build would
-    // fail on a missing table instead of migrating whatever database the build machine points at.
+    // at most read the database the build machine points at (and fail on a missing table), never migrate it.
     prodMigrations: isProductionRuntime ? migrations : undefined,
 ```
 
@@ -6857,11 +6857,11 @@ async function query(db: Db, sql: string, ...args: string[]) {
 
 /**
  * What is compared, per table: each column's name, type, NOT NULL, PK and default; each index's name, whether it is
- * unique and its columns in order (plain and unique indexes alike); each foreign key's columns and its ON UPDATE and
- * ON DELETE actions. SQLite's own tables are left out.
+ * unique and its columns in order (plain and unique indexes alike); each foreign key's columns, the table it points at
+ * and its ON UPDATE and ON DELETE actions. SQLite's own tables are left out.
  * Not compared: the order of the columns, and details only the CREATE statement shows (CHECK, COLLATE, AUTOINCREMENT,
- * a partial index's WHERE). Payload's SQLite builder doesn't emit those; AUTOINCREMENT only with the adapter's
- * `autoIncrement` option, which is off.
+ * a DESC index column, a partial index's WHERE). Payload's SQLite builder doesn't emit those; AUTOINCREMENT only
+ * with the adapter's `autoIncrement` option, which is off.
  */
 async function describeSchema(db: Db) {
   const tables = await query(
@@ -7053,10 +7053,10 @@ Feltételezés: egyetlen Node processz fut. A foglalási korlát (IP-nként ór�
 
 ## Biztonságos üzemeltetés
 
-- **Egy adatbázis, egy folyamat.** Deploy közben ne fusson egyszerre a régi és az új alkalmazás, és futó oldal mellett ne futtass kézzel `payload migrate`-et. A `npm run payload migrate:status` biztonságos, csak olvas.
-- **Az éles adatbázison soha ne futtasd az `npm run dev`-et vagy az `npm run seed`-et, és ne töltsd fel a helyi `.data/` adatbázist.** Ezek séma-szinkronnal írnak, és `dev` jelölést hagynak a `payload_migrations` táblában. Tünet: az oldal és az admin hibaüzenet nélkül nem tölt be (a képek és a statikus fájlok igen), a napló végén ez áll: „It looks like you've run Payload in dev mode… (y/N)”. Teendő: állítsd le az alkalmazást, és nézd meg: `sqlite3 pannipix.db "select name, batch from payload_migrations"`. Ha minden migráció szerepel a listában, töröld a `dev` sort (`delete from payload_migrations where batch = -1`), és indítsd újra. Ha csak a `dev` sor van, az adatbázist nem migráció hozta létre: állítsd vissza a mentést, vagy kezdd üres adatbázissal.
+- **Egy adatbázis, egy folyamat.** Deploy közben ne fusson egyszerre a régi és az új alkalmazás, és futó oldal mellett ne futtass kézzel `payload migrate`-et. A `npm run payload migrate:status` biztonságos, csak olvas. A `payload` parancsok elé add meg ugyanazokat a változókat, mint az alkalmazásnak; `DATABASE_URL` nélkül a deploy mappa `.data/` adatbázisát nyitnák meg.
+- **Az éles adatbázison soha ne futtasd az `npm run dev`-et vagy az `npm run seed`-et, és ne töltsd fel a helyi `.data/` adatbázist.** Ezek séma-szinkronnal írnak, és `dev` jelölést hagynak a `payload_migrations` táblában. Tünet: az oldal és az admin hibaüzenet nélkül nem tölt be (csak a `public/` mappa fájljai, pl. a favicon, töltenek be; a feltöltött képek sem), a napló végén ez áll: „It looks like you've run Payload in dev mode… (y/N)”. Teendő: állítsd le az alkalmazást, és nézd meg: `sqlite3 pannipix.db "select name, batch from payload_migrations"`. Ha minden migráció szerepel a listában, töröld a `dev` sort (`delete from payload_migrations where batch = -1`), és indítsd újra. Ha csak a `dev` sor van, az adatbázist nem migráció hozta létre: állítsd vissza a mentést, vagy kezdd üres adatbázissal.
 - **Migráció élesítése előtt ments.** A migrációk tranzakció nélkül futnak. Egy félbeszakadt migráció után minden indítás az első kérésnél leáll (`table … already exists`). Ilyenkor állítsd le az alkalmazást, és állítsd vissza a mentést. A legelső élesítésnél elég törölni a három adatbázisfájlt (`.db`, `-wal`, `-shm`), és újraindítani.
-- **Próba éles adatokon.** Egy új migrációt élesítés előtt próbálj ki az éles adatbázis másolatán: `DATABASE_URL=file:/tmp/proba.db MEDIA_DIR=/tmp/proba-media npm run payload migrate`. A tesztek üres adatbázison futnak, az adatfüggő hibákat (pl. új kötelező mező meglévő sorokon) nem látják.
+- **Próba éles adatokon.** Egy új migrációt élesítés előtt próbálj ki az éles adatbázis másolatán: `sqlite3 pannipix.db ".backup /tmp/proba.db"`, majd `DATABASE_URL=file:/tmp/proba.db MEDIA_DIR=/tmp/proba-media npm run payload migrate` (a többi változó az alkalmazáséval egyezzen). A tesztek üres adatbázison futnak, az adatfüggő hibákat (pl. új kötelező mező meglévő sorokon) nem látják.
 
 ## Sémaváltozás
 

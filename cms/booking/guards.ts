@@ -51,10 +51,10 @@ export const guardSlotDelete = refuseWhileReferenced(
 );
 
 /**
- * A booking copies its slot's time (`slotStartsAt`) when it takes the slot; the emails and the admin list show the copy,
- * and only moving the booking to another slot refreshes it. So a slot a booking holds keeps its time: to reschedule,
- * the admin makes a new slot and moves the booking onto it. A rejected or cancelled booking has let go of its slot, so
- * only an active one blocks this.
+ * A booking copies its slot's time (`slotStartsAt`) when it takes the slot. The emails and the admin list show the
+ * copy, and only moving the booking to another slot refreshes it. So a slot a booking holds keeps its time: to
+ * reschedule, the admin makes a new slot and moves the booking onto it. A rejected or cancelled booking has let go
+ * of its slot, so only an active one blocks this.
  */
 export const guardSlotTimeChange: CollectionBeforeChangeHook<Slot> = async ({ data, originalDoc, operation, req }) => {
   if (operation !== "update" || !data.startsAt || !originalDoc?.startsAt) return data;

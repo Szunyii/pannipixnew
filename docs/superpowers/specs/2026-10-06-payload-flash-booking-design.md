@@ -128,7 +128,7 @@ Nyilvános foglalás kizárólag a server actionön keresztül jöhet létre (Lo
 
 - **Aktív**: `pending`, `confirmed`, `completed`. Leköti az időpontot és a minta egy alkalmát.
 - **Felszabadított**: `rejected`, `cancelled`. A hook `slot = null` és `seat = null` értéket állít be; a pillanatképek megmaradnak.
-- Felszabadított foglalás nem állítható vissza aktívra. Hibaüzenet: „Elutasított vagy lemondott foglalás nem aktiválható újra – hozz létre új foglalást.” A két felszabadított állapot között szabad a váltás.
+- Felszabadított foglalás nem állítható vissza aktívra. Hibaüzenet: „Ez a foglalás már nem aktiválható.” Az *Állapot* mező leírása az adminban elmondja, mikor kap az ügyfél levelet, és hogy ilyenkor új foglalást kell létrehozni. A két felszabadított állapot között szabad a váltás.
 - Új foglalás nem jöhet létre eleve elutasított vagy lemondott állapotban. Hibaüzenet: „Új foglalás csak Függőben, Jóváhagyva vagy Elkészült állapotban hozható létre.”
 
 ### 6.2 Foglalhatóság
@@ -166,6 +166,7 @@ Nyilvános és admin által felvett foglalásnál ugyanez fut; az eltérések je
 - Kollekció nem törölhető, amíg van benne minta.
 - Minta nem törölhető, ha bármilyen foglalás tartozik hozzá. Helyette `visible = false`.
 - Időpont nem törölhető, ha aktív foglalás tartozik hozzá.
+- Foglalt időpont kezdése nem módosítható (különben a foglalás pillanatképe és a levelek a régi időt mutatnák): új időpontot kell felvenni, és arra áthelyezni a foglalást.
 - Foglalás törölhető (pl. spam esetén); a törlés felszabadítja az időpontot és az alkalmat.
 
 ## 7. E-mailek
@@ -286,6 +287,7 @@ TRUSTED_PROXY_HOPS=1
   4. Ugyanarra az időpontra érkező második foglalás elutasítva.
   5. Felszabadított foglalás nem aktiválható újra.
   6. Foglalt időpontra történő áthelyezés elutasítva.
+  7. Foglalt időpont kezdésének módosítása elutasítva.
   7. **Két egyidejű foglalás az utolsó alkalomra, illetve ugyanarra az időpontra: pontosan egy sikerül.**
   8. Nyilvános foglalás múltbeli időpontra vagy rejtett mintára elutasítva.
   9. A törlési szabályok.

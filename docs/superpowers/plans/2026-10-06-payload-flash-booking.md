@@ -1640,7 +1640,16 @@ EOF
 - [ ] **Step 1: `cms/booking/guards.ts`**
 
 ```ts
-import { APIError, type CollectionBeforeDeleteHook, type CollectionSlug, type Where } from "payload";
+import {
+  APIError,
+  type CollectionBeforeChangeHook,
+  type CollectionBeforeDeleteHook,
+  type CollectionSlug,
+  type PayloadRequest,
+  ValidationError,
+  type Where,
+} from "payload";
+import type { Slot } from "@/payload-types";
 
 /** A delete the guards turn down on purpose: the admin sees the message, and the server logs it at info (payload.config.ts). */
 export class DeleteRefusedError extends APIError {
@@ -1651,11 +1660,16 @@ export class DeleteRefusedError extends APIError {
   }
 }
 
+/** Whether any document in `collection` points at `id` through `field`. */
+async function isReferenced(collection: CollectionSlug, field: string, id: number | string, req: PayloadRequest) {
+  const where: Where = { [field]: { equals: id } };
+  const { totalDocs } = await req.payload.count({ collection, where, overrideAccess: true, req });
+  return totalDocs > 0;
+}
+
 function refuseWhileReferenced(collection: CollectionSlug, field: string, message: string): CollectionBeforeDeleteHook {
   return async ({ id, req }) => {
-    const where: Where = { [field]: { equals: id } };
-    const { totalDocs } = await req.payload.count({ collection, where, overrideAccess: true, req });
-    if (totalDocs > 0) throw new DeleteRefusedError(message);
+    if (await isReferenced(collection, field, id, req)) throw new DeleteRefusedError(message);
   };
 }
 
@@ -1677,6 +1691,37 @@ export const guardSlotDelete = refuseWhileReferenced(
   "slot",
   "Az időpont nem törölhető, mert foglalás tartozik hozzá. Előbb utasítsd el vagy mondd le a foglalást.",
 );
+
+/**
+ * A booking copies its slot's time (`slotStartsAt`) when it takes the slot. The emails and the admin list show the
+ * copy, and only moving the booking to another slot refreshes it. So a slot a booking holds keeps its time: to
+ * reschedule, the admin makes a new slot and moves the booking onto it. A rejected or cancelled booking has let go
+ * of its slot, so only an active one blocks this.
+ */
+export const guardSlotTimeChange: CollectionBeforeChangeHook<Slot> = async ({ data, originalDoc, operation, req }) => {
+  if (operation !== "update" || !data.startsAt || !originalDoc?.startsAt) return data;
+  const next = new Date(data.startsAt).getTime();
+  // A date that doesn't parse is left for the date field to reject (400, not 500). The same moment written another
+  // way (an offset instead of Z) is no change, which keeps the admin's whole-document save of a booked slot working.
+  if (Number.isNaN(next) || next === new Date(originalDoc.startsAt).getTime()) return data;
+
+  if (await isReferenced("bookings", "slot", originalDoc.id, req)) {
+    throw new ValidationError(
+      {
+        collection: "slots",
+        errors: [
+          {
+            path: "startsAt",
+            label: "Kezdés",
+            message: "Foglalt időpont nem módosítható: vegyél fel új időpontot, és tedd át rá a foglalást.",
+          },
+        ],
+      },
+      req.t,
+    );
+  }
+  return data;
+};
 
 // Payload removes an upload's files before the row, so without this check the row delete would fail on the design's
 // image reference only after the artwork was gone from disk.
@@ -1776,6 +1821,7 @@ export const Categories: CollectionConfig = {
 ```ts
 import { ValidationError, type CollectionBeforeChangeHook, type CollectionConfig, type Where } from "payload";
 import { relationId } from "@/lib/booking-rules";
+import { designName } from "@/lib/design-name";
 import type { Design } from "@/payload-types";
 import { adminOrVisible, isAdmin } from "../access";
 import { guardDesignDelete } from "../booking/guards";
@@ -1814,7 +1860,7 @@ const prepareDesign: CollectionBeforeChangeHook<Design> = async ({ data, origina
     overrideAccess: true,
     req,
   });
-  if (category) data.title = `${category.name} #${number}`;
+  if (category) data.title = designName({ collection: category.name, number });
   return data;
 };
 
@@ -1932,7 +1978,7 @@ import type { CollectionBeforeChangeHook, CollectionConfig, FieldHook } from "pa
 import { TIME_ZONE, formatSlotTitle } from "@/lib/time";
 import type { Slot } from "@/payload-types";
 import { isAdmin } from "../access";
-import { guardSlotDelete } from "../booking/guards";
+import { guardSlotDelete, guardSlotTimeChange } from "../booking/guards";
 
 const setTitle: CollectionBeforeChangeHook<Slot> = ({ data, originalDoc }) => {
   const startsAt = data.startsAt ?? originalDoc?.startsAt;
@@ -1966,7 +2012,7 @@ export const Slots: CollectionConfig = {
   defaultSort: "startsAt",
   disableDuplicate: true,
   access: { read: isAdmin, create: isAdmin, update: isAdmin, delete: isAdmin },
-  hooks: { beforeChange: [setTitle], beforeDelete: [guardSlotDelete] },
+  hooks: { beforeChange: [guardSlotTimeChange, setTitle], beforeDelete: [guardSlotDelete] },
   fields: [
     { name: "title", type: "text", label: "Időpont", admin: { hidden: true, disableBulkEdit: true } },
     {
@@ -2079,7 +2125,11 @@ export const Bookings: CollectionConfig = {
       defaultValue: "pending",
       label: "Állapot",
       options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ label, value })),
-      admin: { position: "sidebar" },
+      admin: {
+        position: "sidebar",
+        description:
+          "Az ügyfél e-mailt kap, amikor a foglalás létrejön, jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
+      },
     },
     {
       type: "row",
@@ -2403,6 +2453,97 @@ describe("collections", () => {
     await expect(payload.delete({ collection: "slots", id: slot.id })).rejects.toThrow(/foglalás tartozik/);
   });
 
+  describe("the time of a slot", () => {
+    const HOUR = 60 * 60 * 1000;
+    const hourLater = (startsAt: string) => new Date(new Date(startsAt).getTime() + HOUR).toISOString();
+
+    /** A slot a booking holds, and the booking. */
+    async function heldSlot() {
+      const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+      const slot = await createSlot(payload);
+      const booking = await createBooking(payload, design.id, slot.id);
+      return { slot, booking };
+    }
+
+    it("stays as it is while a booking holds the slot, so the booking and its emails never show an old time", async () => {
+      const { slot, booking } = await heldSlot();
+
+      const refusal = await payload
+        .update({ collection: "slots", id: slot.id, data: { startsAt: hourLater(slot.startsAt) } })
+        .catch((err: unknown) => err);
+
+      expect(refusal).toMatchObject({
+        name: "ValidationError",
+        data: {
+          errors: [
+            {
+              path: "startsAt",
+              message: "Foglalt időpont nem módosítható: vegyél fel új időpontot, és tedd át rá a foglalást.",
+            },
+          ],
+        },
+      });
+      // The admin's toast names the field, in Hungarian: the hook passes req.t.
+      expect((refusal as Error).message).toBe("A következő mező érvénytelen: Kezdés");
+      const unchanged = await payload.findByID({ collection: "slots", id: slot.id, depth: 0 });
+      expect(unchanged).toMatchObject({ startsAt: slot.startsAt, title: slot.title });
+      expect(await payload.findByID({ collection: "bookings", id: booking.id, depth: 0 })).toMatchObject({
+        slot: slot.id,
+        slotStartsAt: slot.startsAt,
+      });
+    });
+
+    it("can change while the slot is free, and the slot is renamed", async () => {
+      const slot = await payload.create({ collection: "slots", data: { startsAt: "2026-10-14T08:00:00.000Z" } });
+
+      const moved = await payload.update({
+        collection: "slots",
+        id: slot.id,
+        data: { startsAt: "2026-10-14T09:00:00.000Z" },
+      });
+
+      expect(moved.startsAt).toBe("2026-10-14T09:00:00.000Z");
+      expect(moved.title).toBe("2026. 10. 14. (szerda) 11:00");
+    });
+
+    it("can change again once the booking that held the slot is rejected", async () => {
+      const { slot, booking } = await heldSlot();
+      await payload.update({ collection: "bookings", id: booking.id, data: { status: "rejected" } });
+
+      const moved = await payload.update({
+        collection: "slots",
+        id: slot.id,
+        data: { startsAt: hourLater(slot.startsAt) },
+      });
+
+      expect(moved.startsAt).toBe(hourLater(slot.startsAt));
+    });
+
+    it("lets a booked slot be saved when its time stays the same", async () => {
+      const { slot } = await heldSlot();
+
+      // Just the time, and the whole document back as the admin form sends it.
+      await payload.update({ collection: "slots", id: slot.id, data: { startsAt: slot.startsAt } });
+      const doc = await payload.findByID({ collection: "slots", id: slot.id, depth: 0 });
+      const saved = await payload.update({ collection: "slots", id: slot.id, data: { ...doc } });
+
+      expect(saved.startsAt).toBe(slot.startsAt);
+      expect(saved.state).toBe("Foglalt");
+    });
+
+    it("counts the same moment, written with an offset, as no change", async () => {
+      const { slot } = await heldSlot();
+
+      const saved = await payload.update({
+        collection: "slots",
+        id: slot.id,
+        data: { startsAt: slot.startsAt.replace("Z", "+00:00") },
+      });
+
+      expect(new Date(saved.startsAt).getTime()).toBe(new Date(slot.startsAt).getTime());
+    });
+  });
+
   it("keeps an image a design uses, files and all", async () => {
     const used = await createImage(payload);
     const unused = await createImage(payload);
@@ -2448,6 +2589,13 @@ describe("collections", () => {
     expect(await state(free.id)).toBe("Szabad");
     expect(await state(booked.id)).toBe("Foglalt");
     expect(await state(past.id)).toBe("Lejárt");
+  });
+
+  it("tells the admin at the status when the customer is emailed and that a released booking stays released", () => {
+    const status = payload.collections.bookings.config.flattenedFields.find((f) => f.name === "status");
+    expect(status?.admin?.description).toBe(
+      "Az ügyfél e-mailt kap, amikor a foglalás létrejön, jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
+    );
   });
 
   it("keeps internal fields and a booking's design out of the admin's bulk edit", () => {
@@ -2544,7 +2692,8 @@ export const BOOKING_MESSAGES: Record<BookingErrorCode, string> = {
   slot_required: "Válassz időpontot.",
   slot_past: "Ez az időpont már elmúlt, válassz másikat.",
   slot_taken: "Ezt az időpontot közben lefoglalták, válassz másikat.",
-  reactivate: "Elutasított vagy lemondott foglalás nem aktiválható újra – hozz létre új foglalást.",
+  // Short: the admin shows it in the narrow sidebar, under the status. The field's description says what to do instead.
+  reactivate: "Ez a foglalás már nem aktiválható.",
   create_released: "Új foglalás csak Függőben, Jóváhagyva vagy Elkészült állapotban hozható létre.",
 };
 
@@ -2708,9 +2857,13 @@ describe("booking rules", () => {
     const booking = await createBooking(payload, design.id, (await createSlot(payload)).id);
     await payload.update({ collection: "bookings", id: booking.id, data: { status } });
 
+    // Short, because the admin shows it in the narrow sidebar; the status field's description has the rest.
     await expect(
       payload.update({ collection: "bookings", id: booking.id, data: { status: "confirmed" } }),
-    ).rejects.toMatchObject({ code: "reactivate" });
+    ).rejects.toMatchObject({
+      code: "reactivate",
+      data: { errors: [{ path: "status", message: "Ez a foglalás már nem aktiválható." }] },
+    });
     // Switching between the two released statuses is fine.
     const other = status === "rejected" ? "cancelled" : "rejected";
     expect((await payload.update({ collection: "bookings", id: booking.id, data: { status: other } })).status).toBe(other);
@@ -2836,6 +2989,7 @@ import {
   nextSeat,
   relationId,
 } from "@/lib/booking-rules";
+import { designName } from "@/lib/design-name";
 import type { Booking } from "@/payload-types";
 import { BookingError } from "./errors";
 
@@ -2924,7 +3078,7 @@ async function takeSeat(designId: number, { data, isPublic, excludeId, req }: Sc
     if (seat === null) throw new BookingError("sold_out", req.t);
     data.seat = seat;
   }
-  data.designName = `${category.name} #${design.number}`;
+  data.designName = designName({ collection: category.name, number: design.number });
   data.price = design.price;
 }
 
@@ -3059,8 +3213,9 @@ describe("classifyBookingError", () => {
 `tests/int/public-booking.test.ts`:
 
 ```ts
+import { inspect } from "node:util";
 import type { Payload } from "payload";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPublicBooking } from "@/cms/booking/public";
 import {
   createCategory,
@@ -3155,6 +3310,34 @@ describe("website bookings", () => {
     expect(booked.docs.map((b) => b.seat ?? 0).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   });
 
+  it("log a failed insert without the booking's data", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+    const slot = await createSlot(payload);
+    const booking = { ...publicInput(design.id, slot.id), note: "Allergiás vagyok a festékre" };
+    const details = [booking.name, booking.email, booking.phone, booking.note];
+    // The database turns every booking insert away, as a full disk would. Drizzle then throws an error whose message
+    // lists the query's parameters: the visitor's name, email, phone and note.
+    await payload.db.drizzle.$client.execute(
+      "CREATE TRIGGER refuse_booking BEFORE INSERT ON bookings BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
+    );
+    const create = vi.spyOn(payload, "create");
+    const logged = vi.spyOn(payload.logger, "error").mockImplementation(() => undefined);
+    try {
+      expect(await createPublicBooking(payload, booking)).toEqual({ ok: false, code: "unknown" });
+
+      const failure = await (create.mock.results[0].value as Promise<unknown>).catch((err: unknown) => err);
+      for (const detail of details) expect(inspect(failure, { depth: null })).toContain(detail);
+      expect(logged.mock.calls).toEqual([
+        [{ err: { name: "Error", code: "SQLITE_CONSTRAINT_TRIGGER" }, attempts: 1, msg: "Website booking failed" }],
+      ]);
+      for (const detail of details) expect(inspect(logged.mock.calls, { depth: null })).not.toContain(detail);
+    } finally {
+      create.mockRestore();
+      logged.mockRestore();
+      await payload.db.drizzle.$client.execute("DROP TRIGGER refuse_booking");
+    }
+  });
+
   it("let exactly one of two simultaneous requests take a slot", async () => {
     const category = await createCategory(payload, "unlimited");
     const [a, b] = [await createDesign(payload, category.id), await createDesign(payload, category.id)];
@@ -3174,6 +3357,7 @@ describe("website bookings", () => {
 `tests/unit/public-booking-retry.test.ts` (adatbázis nélkül, a `payload.create` helyett csonkkal; az újrapróbálást a meghajtó ütemezésétől függetlenül rögzíti):
 
 ```ts
+import { inspect } from "node:util";
 import { type Payload, ValidationError } from "payload";
 import { describe, expect, it, vi } from "vitest";
 import { BookingError } from "@/cms/booking/errors";
@@ -3274,6 +3458,26 @@ describe("createPublicBooking", () => {
     expect(error).toHaveBeenCalledTimes(1);
   });
 
+  it("logs the kind of a failed insert, never the booking it was storing", async () => {
+    const booking = { ...input, note: "Allergiás vagyok a festékre" };
+    const params = [booking.name, booking.email, booking.phone, booking.note];
+    // Drizzle puts the query's parameters into the message of its error: the visitor's name, email, phone and note.
+    const driver = Object.assign(new Error("SQLITE_BUSY: database is locked"), { code: "SQLITE_BUSY" });
+    const message = `Failed query: insert into "bookings" (...)\nparams: ${params.join(",")}`;
+    const failure = Object.assign(new Error(message, { cause: driver }), { params });
+    expect(inspect(failure, { depth: null })).toContain(booking.email);
+    const { payload, error } = fakePayload(failure);
+
+    expect(await createPublicBooking(payload, booking)).toEqual({ ok: false, code: "unknown" });
+
+    expect(error).toHaveBeenCalledExactlyOnceWith({
+      err: { name: "Error", code: "SQLITE_BUSY" },
+      attempts: 1,
+      msg: "Website booking failed",
+    });
+    for (const detail of params) expect(inspect(error.mock.calls, { depth: null })).not.toContain(detail);
+  });
+
   it("sends every attempt as a pending website booking that loads no relations afterwards", async () => {
     const { payload, create } = fakePayload(seatConflict(), { id: 7 });
     await createPublicBooking(payload, input);
@@ -3304,6 +3508,7 @@ Expected: az `errors` teszt PASS (a Task 8-ban már elkészült), a `public-book
 ```ts
 import type { Payload } from "payload";
 import type { BookingInput } from "@/lib/booking-input";
+import { loggableError } from "../log";
 import { type PublicBookingCode, classifyBookingError } from "./errors";
 
 export type PublicBookingResult = { ok: true; bookingId: number } | { ok: false; code: PublicBookingCode };
@@ -3361,7 +3566,8 @@ export async function createPublicBooking(payload: Payload, input: BookingInput)
         continue;
       }
       if (isPublicCode(code)) return { ok: false, code };
-      payload.logger.error({ err, attempts: attempt, msg: "Website booking failed" });
+      // The error itself would carry the booking: Drizzle lists the query's parameters in its message.
+      payload.logger.error({ err: loggableError(err), attempts: attempt, msg: "Website booking failed" });
       return { ok: false, code: "unknown" };
     }
   }
@@ -3554,6 +3760,7 @@ describe("bookingEmailsFor", () => {
 `tests/int/emails.test.ts`:
 
 ```ts
+import { inspect } from "node:util";
 import type { Payload } from "payload";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPublicBooking } from "@/cms/booking/public";
@@ -3685,6 +3892,13 @@ describe("booking emails", () => {
     expect(sent).toEqual([]);
   });
 
+  it("stay quiet when a booking is deleted", async () => {
+    const booking = await createBooking(payload, (await design()).id, (await createSlot(payload)).id);
+    sent = [];
+    await payload.delete({ collection: "bookings", id: booking.id });
+    expect(sent).toEqual([]);
+  });
+
   it("never stop a booking when sending fails", async () => {
     // A plain function, not a mock: a vi.fn() keeps the promise it returns, which counts as handling its rejection
     // and would hide a missing .catch in the hook.
@@ -3706,15 +3920,49 @@ describe("booking emails", () => {
       expect(unhandled).toEqual([]);
       expect(logged).toHaveBeenCalledTimes(2);
       expect(logged).toHaveBeenNthCalledWith(1, {
-        err: smtpDown,
+        err: { name: "Error" },
         msg: `Booking email "admin-new" for booking ${id} failed`,
       });
       expect(logged).toHaveBeenNthCalledWith(2, {
-        err: smtpDown,
+        err: { name: "Error" },
         msg: `Booking email "customer-received" for booking ${id} failed`,
       });
     } finally {
       process.off("unhandledRejection", onUnhandled);
+      payload.sendEmail = spied;
+    }
+  });
+
+  it("log a refused email without its addresses or anything else about the customer", async () => {
+    // What nodemailer throws when the mail server refuses a recipient: the address is in the message, the server's
+    // reply and the rejected list.
+    const reply = `550 5.1.1 <${customer.email}>: Recipient address rejected: User unknown`;
+    const refusal = Object.assign(new Error(`Can't send mail - all recipients were rejected: ${reply}`), {
+      code: "EENVELOPE",
+      response: reply,
+      responseCode: 550,
+      command: "RCPT TO",
+      rejected: [customer.email],
+      rejectedErrors: [{ code: "EENVELOPE", response: reply, responseCode: 550, recipient: customer.email }],
+    });
+    expect(inspect(refusal, { depth: null })).toContain(customer.email);
+    const spied = payload.sendEmail;
+    payload.sendEmail = () => Promise.reject(refusal);
+    const logged = vi.spyOn(payload.logger, "error").mockImplementation(() => undefined);
+    try {
+      const id = await bookOnTheWebsite();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const entry = (kind: string) => ({
+        err: { name: "Error", code: "EENVELOPE", responseCode: 550, command: "RCPT TO" },
+        msg: `Booking email "${kind}" for booking ${id} failed`,
+      });
+      expect(logged.mock.calls).toEqual([[entry("admin-new")], [entry("customer-received")]]);
+      const printed = inspect(logged.mock.calls, { depth: null });
+      for (const detail of [customer.name, customer.email, customer.phone, "admin@example.com"]) {
+        expect(printed).not.toContain(detail);
+      }
+    } finally {
       payload.sendEmail = spied;
     }
   });
@@ -3752,7 +4000,10 @@ describe("booking emails", () => {
     const id = await onlyBookingId();
     expect(sent.map((m) => m.to)).toEqual(["teszt.elek@example.com"]);
     expect(logged).toHaveBeenCalledOnce();
-    expect(logged).toHaveBeenCalledWith({ err: boom, msg: `Booking email "admin-new" for booking ${id} failed` });
+    expect(logged).toHaveBeenCalledWith({
+      err: { name: "Error" },
+      msg: `Booking email "admin-new" for booking ${id} failed`,
+    });
   });
 
   it("never let an email that cannot be built stop a booking", async () => {
@@ -3782,11 +4033,11 @@ describe("booking emails", () => {
     expect(sent).toEqual([]);
     expect(logged).toHaveBeenCalledTimes(2);
     expect(logged).toHaveBeenNthCalledWith(1, {
-      err: expect.any(RangeError),
+      err: { name: "RangeError" },
       msg: 'Booking email "admin-new" for booking 7 failed',
     });
     expect(logged).toHaveBeenNthCalledWith(2, {
-      err: expect.any(RangeError),
+      err: { name: "RangeError" },
       msg: 'Booking email "customer-received" for booking 7 failed',
     });
   });
@@ -3985,6 +4236,7 @@ import type { CollectionAfterChangeHook } from "payload";
 import { placementLabel } from "@/lib/booking-input";
 import type { Booking } from "@/payload-types";
 import { siteUrl } from "../env";
+import { loggableError } from "../log";
 import {
   type BookingEmailData,
   type BookingEmailKind,
@@ -4053,7 +4305,11 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
       continue;
     }
     const failed = (err: unknown) => {
-      req.payload.logger.error({ err, msg: `Booking email "${kind}" for booking ${doc.id} failed` });
+      // Not the error itself: a mail error holds the addresses in its message, response and rejected list.
+      req.payload.logger.error({
+        err: loggableError(err),
+        msg: `Booking email "${kind}" for booking ${doc.id} failed`,
+      });
     };
     try {
       const { subject, html, text } = builders[kind](data);
@@ -4943,18 +5199,15 @@ Kikerül a beégetett `designs` tömb, a `collections` lista és a `Collection` 
 
 ```ts
 import type { Availability, BookingRule } from "@/lib/booking-rules";
+import { designName } from "@/lib/design-name";
 import { formatPrice } from "@/lib/format";
 import type { FlashCategory, FlashDesign } from "@/lib/flash-types";
 
-export { formatPrice };
+export { designName, formatPrice };
 export type { BookingRule };
 export type { DesignImage, FlashCategory, FlashDesign } from "@/lib/flash-types";
 
 export const styles = ["Conceptual", "Abstract", "Microrealism"] as const;
-
-export function designName(d: Pick<FlashDesign, "collection" | "number">) {
-  return `${d.collection} #${d.number}`;
-}
 
 /** One line on how often a design can still be booked. */
 export function availabilityLabel({ rule, remaining, soldOut }: Availability) {
@@ -4973,17 +5226,25 @@ export function priceRange(designs: FlashDesign[]) {
   return min === max ? formatPrice(min) : `${formatPrice(min).replace(" Ft", "")} – ${formatPrice(max)}`;
 }
 
-/** The rule every collection books by; null when they differ or there are none. */
-export function sharedRule(categories: readonly Pick<FlashCategory, "rule">[]): BookingRule | null {
-  const rule = categories[0]?.rule;
-  return rule && categories.every((c) => c.rule === rule) ? rule : null;
+type Designs = readonly Pick<FlashDesign, "availability">[];
+type Categories = readonly Pick<FlashCategory, "rule">[];
+
+/**
+ * The rule every design on the site books by; null when they differ or there are none. It goes by the designs shown:
+ * a collection with no visible design (empty, or all switched off) would otherwise make the rules look mixed. Only
+ * while no design is shown do the collections stand in.
+ */
+export function sharedRule(designs: Designs, categories: Categories): BookingRule | null {
+  const rules = designs.length > 0 ? designs.map((d) => d.availability.rule) : categories.map((c) => c.rule);
+  const rule = rules[0];
+  return rule && rules.every((r) => r === rule) ? rule : null;
 }
 
 const ruleNames: Record<BookingRule, string> = { single: "Egyszeri", limited: "Limitált", unlimited: "Korlátlan" };
 
 /** How often a flash design can be booked, in a word or two for the services overview. */
-export function ruleSummary(categories: readonly Pick<FlashCategory, "rule">[]) {
-  const rule = sharedRule(categories);
+export function ruleSummary(designs: Designs, categories: Categories) {
+  const rule = sharedRule(designs, categories);
   return rule ? ruleNames[rule] : "Kollekciónként eltérő";
 }
 ```
@@ -5106,7 +5367,7 @@ const sorters: Record<Sort, (a: FlashDesign, b: FlashDesign) => number> = {
   "price-desc": (a, b) => soldOutLast(a, b) || b.price - a.price,
 };
 
-/** How often a design is tattooed, when every collection books by the same rule. */
+/** How often a design is tattooed, when every design shown books by the same rule. */
 const ruleIntro: Record<BookingRule, string> = {
   single: "Mindegyik csak egyszer kerül bőrre, utána lekerül a kínálatból.",
   limited: "Mindegyik csak meghatározott számú alkalommal készül el.",
@@ -5198,7 +5459,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
   const allChip = useRef<HTMLButtonElement>(null);
 
   const visible = designs.filter((d) => filter === null || d.collection === filter).sort(sorters[sort]);
-  const rule = sharedRule(categories);
+  const rule = sharedRule(designs, categories);
 
   const choose = (name: string | null) => {
     setFilter(name);
@@ -5643,7 +5904,7 @@ export default async function Home() {
       <Header />
       <main id="main">
         <Hero />
-        <Paths flashPrice={priceRange(designs)} flashRule={ruleSummary(categories)} />
+        <Paths flashPrice={priceRange(designs)} flashRule={ruleSummary(designs, categories)} />
         <FlashCollection designs={designs} categories={categories} />
         <Spotlight designs={designs} />
         <Process />
@@ -5678,7 +5939,7 @@ EOF
 ```
 
 > **Az átnézés után (commit `0c72ea4`):**
-> - A fenti blokkok a végleges kódot mutatják. A `Paths` a `flashRule` propot is megkapja; ez a `ruleSummary(categories)` eredménye, és az „Alkalmak” sorban jelenik meg.
+> - A fenti blokkok a végleges kódot mutatják. A `Paths` a `flashRule` propot is megkapja; ez a `ruleSummary(designs, categories)` eredménye, és az „Alkalmak” sorban jelenik meg.
 > - Új teszt: `tests/unit/data.test.ts`.
 > - A kiemelt rész a legújabb foglalható mintán indul. Az ár szerinti rendezés az elkelt mintákat a végére teszi.
 
@@ -7145,3 +7406,60 @@ git status --short
 ```
 
 Ha van változás: commit egy, a javítást leíró üzenettel és a `Co-Authored-By` sorral.
+
+---
+
+## Az összevont átnézés után (a teljes ág végső átnézése)
+
+A fenti blokkok a végleges kódot mutatják. Az ág végső átnézése után ezek kerültek be:
+
+- **Foglalt időpont kezdése nem módosítható** (`guardSlotTimeChange` a `cms/booking/guards.ts`-ben, a `Slots` `beforeChange` hookjai között elsőként). Különben a foglalás pillanatképe és a levelek a régi időt mutatnák. Tesztek: `tests/int/collections.test.ts`.
+- **A naplóba nem kerül a látogató adata:** a hibákat a `loggableError` szűkíti le (név, kód, SMTP válaszkód és parancs). Tesztek: `tests/unit/log.test.ts`, `tests/unit/public-booking-retry.test.ts`, `tests/int/emails.test.ts`, `tests/int/public-booking.test.ts`.
+- **A közös szabály a megjelenő mintákból számolódik** (`sharedRule(designs, categories)`, `ruleSummary(designs, categories)`), a kollekciók csak akkor számítanak, ha nincs minta.
+- **Az *Állapot* mező leírása** elmondja, mikor kap az ügyfél levelet; az újraaktiválás hibaüzenete rövidebb lett („Ez a foglalás már nem aktiválható.”).
+- **Egy helyen áll össze a minta neve** (`lib/design-name.ts`): a minta címe az adminban, a foglalás pillanatképe és az oldal is ezt használja. Teszt: `tests/unit/design-name.test.ts`.
+
+`cms/log.ts`:
+
+```ts
+/** What the server log may say about a failure: its kind, and the codes of the database driver or the mail server. */
+export type LoggableError = {
+  name: string;
+  code?: string | number;
+  /** The mail server's reply code, e.g. 550. */
+  responseCode?: number;
+  /** The mail command that failed, e.g. "RCPT TO". */
+  command?: string;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
+const isCode = (value: unknown): value is string | number => typeof value === "string" || typeof value === "number";
+
+/**
+ * Reduces a failure to what is safe to log. An error is never logged whole: Drizzle appends the query's parameters to
+ * its message (a visitor's name, email, phone and note), and a mail error carries the addresses in its message,
+ * `response` and `rejected`. Only identifiers are kept: the error's name, the code of the driver error underneath
+ * (Drizzle wraps it as `cause`), and the mail server's reply code and command. Message and stack stay out.
+ */
+export function loggableError(err: unknown): LoggableError {
+  if (!isRecord(err)) return { name: "unknown" };
+  const cause = isRecord(err.cause) ? err.cause : {};
+  // Plain values only: an object a library attached to the error could hold what must stay out of the log.
+  return {
+    name: typeof err.name === "string" ? err.name : "unknown",
+    code: [cause.code, err.code].find(isCode),
+    responseCode: typeof err.responseCode === "number" ? err.responseCode : undefined,
+    command: typeof err.command === "string" ? err.command : undefined,
+  };
+}
+```
+
+`lib/design-name.ts`:
+
+```ts
+/** "P’CONs #027": the collection and number of a design, spelled one way in the admin, the bookings and the site. */
+export function designName({ collection, number }: { collection: string; number: string }) {
+  return `${collection} #${number}`;
+}
+```
+

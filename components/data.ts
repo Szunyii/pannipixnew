@@ -1,16 +1,13 @@
 import type { Availability, BookingRule } from "@/lib/booking-rules";
+import { designName } from "@/lib/design-name";
 import { formatPrice } from "@/lib/format";
 import type { FlashCategory, FlashDesign } from "@/lib/flash-types";
 
-export { formatPrice };
+export { designName, formatPrice };
 export type { BookingRule };
 export type { DesignImage, FlashCategory, FlashDesign } from "@/lib/flash-types";
 
 export const styles = ["Conceptual", "Abstract", "Microrealism"] as const;
-
-export function designName(d: Pick<FlashDesign, "collection" | "number">) {
-  return `${d.collection} #${d.number}`;
-}
 
 /** One line on how often a design can still be booked. */
 export function availabilityLabel({ rule, remaining, soldOut }: Availability) {

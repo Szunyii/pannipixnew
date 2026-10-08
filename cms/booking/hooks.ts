@@ -7,6 +7,7 @@ import {
   nextSeat,
   relationId,
 } from "@/lib/booking-rules";
+import { designName } from "@/lib/design-name";
 import type { Booking } from "@/payload-types";
 import { BookingError } from "./errors";
 
@@ -95,7 +96,7 @@ async function takeSeat(designId: number, { data, isPublic, excludeId, req }: Sc
     if (seat === null) throw new BookingError("sold_out", req.t);
     data.seat = seat;
   }
-  data.designName = `${category.name} #${design.number}`;
+  data.designName = designName({ collection: category.name, number: design.number });
   data.price = design.price;
 }
 

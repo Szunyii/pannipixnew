@@ -1,5 +1,6 @@
 import { ValidationError, type CollectionBeforeChangeHook, type CollectionConfig, type Where } from "payload";
 import { relationId } from "@/lib/booking-rules";
+import { designName } from "@/lib/design-name";
 import type { Design } from "@/payload-types";
 import { adminOrVisible, isAdmin } from "../access";
 import { guardDesignDelete } from "../booking/guards";
@@ -38,7 +39,7 @@ const prepareDesign: CollectionBeforeChangeHook<Design> = async ({ data, origina
     overrideAccess: true,
     req,
   });
-  if (category) data.title = `${category.name} #${number}`;
+  if (category) data.title = designName({ collection: category.name, number });
   return data;
 };
 

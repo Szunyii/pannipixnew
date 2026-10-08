@@ -270,12 +270,11 @@ describe("booking emails", () => {
 
     expect(sent).toEqual([]);
     expect(logged).toHaveBeenCalledTimes(2);
-    expect(logged).toHaveBeenNthCalledWith(1, {
-      err: { name: "RangeError" },
-      msg: 'Booking email "admin-new" for booking 7 failed',
-    });
+    // A bug in our own code keeps its stack, so the log says where: here Intl refusing the date in lib/time.ts.
+    const bug = { name: "RangeError", stack: expect.stringContaining("lib/time.ts") };
+    expect(logged).toHaveBeenNthCalledWith(1, { err: bug, msg: 'Booking email "admin-new" for booking 7 failed' });
     expect(logged).toHaveBeenNthCalledWith(2, {
-      err: { name: "RangeError" },
+      err: bug,
       msg: 'Booking email "customer-received" for booking 7 failed',
     });
   });

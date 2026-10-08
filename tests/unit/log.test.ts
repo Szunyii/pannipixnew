@@ -1,4 +1,5 @@
 import { inspect } from "node:util";
+import { ValidationError } from "payload";
 import { describe, expect, it } from "vitest";
 import { loggableError } from "@/cms/log";
 
@@ -56,8 +57,73 @@ describe("loggableError", () => {
     expect(loggableError(wrapped)).toEqual({ name: "Error", code: "ETIMEDOUT" });
   });
 
-  it("names the kind of error", () => {
-    expect(loggableError(new RangeError("Invalid time value"))).toEqual({ name: "RangeError" });
+  it("keeps the field names of a validation error, never what was entered", () => {
+    // What Payload throws when a field fails its validation. The paths are ours; a message could echo the input.
+    const refused = new ValidationError({
+      collection: "bookings",
+      errors: [
+        { path: "email", message: `${email} is not a valid address` },
+        { path: "phone", message: `${phone} is not a valid number` },
+      ],
+    });
+    expect(printed(refused)).toContain(email);
+
+    const logged = loggableError(refused);
+
+    expect(logged).toEqual({ name: "ValidationError", paths: ["email", "phone"] });
+    expectNoVisitorData(logged);
+  });
+
+  it("ignores validation data that is not a list of field names", () => {
+    const refusedWith = (data: unknown) => Object.assign(new Error("odd"), { name: "ValidationError", data });
+    const odd = [
+      refusedWith({ errors: [{ path: { of: email } }, { path: 5 }, { path: null }, { message: name }, null, phone] }),
+      refusedWith({ errors: `${name} ${phone}` }),
+      refusedWith({ errors: [] }),
+      refusedWith(null),
+    ];
+    for (const refused of odd) expect(loggableError(refused)).toEqual({ name: "ValidationError" });
+  });
+
+  it("keeps the stack of a bug in our own code, so it still has a location", () => {
+    const bugs = [
+      new TypeError("x.map is not a function"),
+      new RangeError("Invalid time value"),
+      new ReferenceError("y is not defined"),
+    ];
+    for (const bug of bugs) {
+      const logged = loggableError(bug);
+      expect(logged).toEqual({ name: bug.name, stack: bug.stack });
+      expect(logged.stack).toContain("log.test.ts");
+    }
+  });
+
+  it("keeps no stack of a SyntaxError: JSON.parse quotes the text it choked on", () => {
+    const parsing = (() => {
+      try {
+        return JSON.parse(name);
+      } catch (err) {
+        return err;
+      }
+    })();
+    expect(parsing).toBeInstanceOf(SyntaxError);
+    expect(printed(parsing)).toContain(name);
+
+    const logged = loggableError(parsing);
+
+    expect(logged).toEqual({ name: "SyntaxError" });
+    expectNoVisitorData(logged);
+  });
+
+  it("keeps neither the message nor the stack of a plain error", () => {
+    const failed = new Error(`Could not store ${name} <${email}>`);
+    expect(printed(failed)).toContain(email);
+
+    const logged = loggableError(failed);
+
+    expect(logged).toEqual({ name: "Error" });
+    expect(logged).not.toHaveProperty("message");
+    expectNoVisitorData(logged);
   });
 
   it("drops what is not a plain code, name or command", () => {

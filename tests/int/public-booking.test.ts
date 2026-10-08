@@ -123,6 +123,26 @@ describe("website bookings", () => {
     }
   });
 
+  it("log which field Payload refused, not what the visitor entered", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+    const slot = await createSlot(payload);
+    // An address Payload's email field turns away.
+    const booking = { ...publicInput(design.id, slot.id), email: "not-an-email" };
+    const logged = vi.spyOn(payload.logger, "error").mockImplementation(() => undefined);
+    try {
+      expect(await createPublicBooking(payload, booking)).toEqual({ ok: false, code: "unknown" });
+
+      expect(logged.mock.calls).toEqual([
+        [{ err: { name: "ValidationError", paths: ["email"] }, attempts: 1, msg: "Website booking failed" }],
+      ]);
+      for (const detail of [booking.name, booking.email, booking.phone]) {
+        expect(inspect(logged.mock.calls, { depth: null })).not.toContain(detail);
+      }
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
   it("let exactly one of two simultaneous requests take a slot", async () => {
     const category = await createCategory(payload, "unlimited");
     const [a, b] = [await createDesign(payload, category.id), await createDesign(payload, category.id)];

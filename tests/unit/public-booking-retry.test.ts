@@ -59,7 +59,12 @@ describe("createPublicBooking", () => {
     create.mockRejectedValue(seatConflict());
     expect(await createPublicBooking(payload, input)).toEqual({ ok: false, code: "unknown" });
     expect(create).toHaveBeenCalledTimes(MAX_ATTEMPTS);
-    expect(error).toHaveBeenCalledTimes(1);
+    // The log says which field the unique index kept turning away.
+    expect(error).toHaveBeenCalledExactlyOnceWith({
+      err: { name: "ValidationError", paths: ["design_id"] },
+      attempts: MAX_ATTEMPTS,
+      msg: "Website booking failed",
+    });
   });
 
   it("lets waiting work run before it retries, so the losers of one race don't retry in lockstep", async () => {

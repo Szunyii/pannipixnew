@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import type { Payload } from "payload";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPublicBooking } from "@/cms/booking/public";
@@ -150,15 +151,49 @@ describe("booking emails", () => {
       expect(unhandled).toEqual([]);
       expect(logged).toHaveBeenCalledTimes(2);
       expect(logged).toHaveBeenNthCalledWith(1, {
-        err: smtpDown,
+        err: { name: "Error" },
         msg: `Booking email "admin-new" for booking ${id} failed`,
       });
       expect(logged).toHaveBeenNthCalledWith(2, {
-        err: smtpDown,
+        err: { name: "Error" },
         msg: `Booking email "customer-received" for booking ${id} failed`,
       });
     } finally {
       process.off("unhandledRejection", onUnhandled);
+      payload.sendEmail = spied;
+    }
+  });
+
+  it("log a refused email without its addresses or anything else about the customer", async () => {
+    // What nodemailer throws when the mail server refuses a recipient: the address is in the message, the server's
+    // reply and the rejected list.
+    const reply = `550 5.1.1 <${customer.email}>: Recipient address rejected: User unknown`;
+    const refusal = Object.assign(new Error(`Can't send mail - all recipients were rejected: ${reply}`), {
+      code: "EENVELOPE",
+      response: reply,
+      responseCode: 550,
+      command: "RCPT TO",
+      rejected: [customer.email],
+      rejectedErrors: [{ code: "EENVELOPE", response: reply, responseCode: 550, recipient: customer.email }],
+    });
+    expect(inspect(refusal, { depth: null })).toContain(customer.email);
+    const spied = payload.sendEmail;
+    payload.sendEmail = () => Promise.reject(refusal);
+    const logged = vi.spyOn(payload.logger, "error").mockImplementation(() => undefined);
+    try {
+      const id = await bookOnTheWebsite();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const entry = (kind: string) => ({
+        err: { name: "Error", code: "EENVELOPE", responseCode: 550, command: "RCPT TO" },
+        msg: `Booking email "${kind}" for booking ${id} failed`,
+      });
+      expect(logged.mock.calls).toEqual([[entry("admin-new")], [entry("customer-received")]]);
+      const printed = inspect(logged.mock.calls, { depth: null });
+      for (const detail of [customer.name, customer.email, customer.phone, "admin@example.com"]) {
+        expect(printed).not.toContain(detail);
+      }
+    } finally {
       payload.sendEmail = spied;
     }
   });
@@ -196,7 +231,10 @@ describe("booking emails", () => {
     const id = await onlyBookingId();
     expect(sent.map((m) => m.to)).toEqual(["teszt.elek@example.com"]);
     expect(logged).toHaveBeenCalledOnce();
-    expect(logged).toHaveBeenCalledWith({ err: boom, msg: `Booking email "admin-new" for booking ${id} failed` });
+    expect(logged).toHaveBeenCalledWith({
+      err: { name: "Error" },
+      msg: `Booking email "admin-new" for booking ${id} failed`,
+    });
   });
 
   it("never let an email that cannot be built stop a booking", async () => {
@@ -226,11 +264,11 @@ describe("booking emails", () => {
     expect(sent).toEqual([]);
     expect(logged).toHaveBeenCalledTimes(2);
     expect(logged).toHaveBeenNthCalledWith(1, {
-      err: expect.any(RangeError),
+      err: { name: "RangeError" },
       msg: 'Booking email "admin-new" for booking 7 failed',
     });
     expect(logged).toHaveBeenNthCalledWith(2, {
-      err: expect.any(RangeError),
+      err: { name: "RangeError" },
       msg: 'Booking email "customer-received" for booking 7 failed',
     });
   });

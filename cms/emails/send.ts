@@ -2,6 +2,7 @@ import type { CollectionAfterChangeHook } from "payload";
 import { placementLabel } from "@/lib/booking-input";
 import type { Booking } from "@/payload-types";
 import { siteUrl } from "../env";
+import { loggableError } from "../log";
 import {
   type BookingEmailData,
   type BookingEmailKind,
@@ -70,7 +71,11 @@ export const sendBookingEmails: CollectionAfterChangeHook<Booking> = async ({
       continue;
     }
     const failed = (err: unknown) => {
-      req.payload.logger.error({ err, msg: `Booking email "${kind}" for booking ${doc.id} failed` });
+      // Not the error itself: a mail error holds the addresses in its message, response and rejected list.
+      req.payload.logger.error({
+        err: loggableError(err),
+        msg: `Booking email "${kind}" for booking ${doc.id} failed`,
+      });
     };
     try {
       const { subject, html, text } = builders[kind](data);

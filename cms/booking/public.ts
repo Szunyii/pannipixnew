@@ -1,5 +1,6 @@
 import type { Payload } from "payload";
 import type { BookingInput } from "@/lib/booking-input";
+import { loggableError } from "../log";
 import { type PublicBookingCode, classifyBookingError } from "./errors";
 
 export type PublicBookingResult = { ok: true; bookingId: number } | { ok: false; code: PublicBookingCode };
@@ -57,7 +58,8 @@ export async function createPublicBooking(payload: Payload, input: BookingInput)
         continue;
       }
       if (isPublicCode(code)) return { ok: false, code };
-      payload.logger.error({ err, attempts: attempt, msg: "Website booking failed" });
+      // The error itself would carry the booking: Drizzle lists the query's parameters in its message.
+      payload.logger.error({ err: loggableError(err), attempts: attempt, msg: "Website booking failed" });
       return { ok: false, code: "unknown" };
     }
   }

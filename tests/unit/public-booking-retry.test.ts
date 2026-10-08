@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { type Payload, ValidationError } from "payload";
 import { describe, expect, it, vi } from "vitest";
 import { BookingError } from "@/cms/booking/errors";
@@ -96,6 +97,26 @@ describe("createPublicBooking", () => {
     expect(await createPublicBooking(payload, input)).toEqual({ ok: false, code: "unknown" });
     expect(create).toHaveBeenCalledTimes(1);
     expect(error).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs the kind of a failed insert, never the booking it was storing", async () => {
+    const booking = { ...input, note: "Allergiás vagyok a festékre" };
+    const params = [booking.name, booking.email, booking.phone, booking.note];
+    // Drizzle puts the query's parameters into the message of its error: the visitor's name, email, phone and note.
+    const driver = Object.assign(new Error("SQLITE_BUSY: database is locked"), { code: "SQLITE_BUSY" });
+    const message = `Failed query: insert into "bookings" (...)\nparams: ${params.join(",")}`;
+    const failure = Object.assign(new Error(message, { cause: driver }), { params });
+    expect(inspect(failure, { depth: null })).toContain(booking.email);
+    const { payload, error } = fakePayload(failure);
+
+    expect(await createPublicBooking(payload, booking)).toEqual({ ok: false, code: "unknown" });
+
+    expect(error).toHaveBeenCalledExactlyOnceWith({
+      err: { name: "Error", code: "SQLITE_BUSY" },
+      attempts: 1,
+      msg: "Website booking failed",
+    });
+    for (const detail of params) expect(inspect(error.mock.calls, { depth: null })).not.toContain(detail);
   });
 
   it("sends every attempt as a pending website booking that loads no relations afterwards", async () => {

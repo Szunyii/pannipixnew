@@ -1,5 +1,6 @@
+import { inspect } from "node:util";
 import type { Payload } from "payload";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPublicBooking } from "@/cms/booking/public";
 import {
   createCategory,
@@ -92,6 +93,34 @@ describe("website bookings", () => {
     expect(results.filter((r) => !r.ok)).toEqual(Array(2).fill({ ok: false, code: "sold_out" }));
     const booked = await payload.find({ collection: "bookings", where: { design: { equals: design.id } }, pagination: false });
     expect(booked.docs.map((b) => b.seat ?? 0).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  it("log a failed insert without the booking's data", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+    const slot = await createSlot(payload);
+    const booking = { ...publicInput(design.id, slot.id), note: "Allergiás vagyok a festékre" };
+    const details = [booking.name, booking.email, booking.phone, booking.note];
+    // The database turns every booking insert away, as a full disk would. Drizzle then throws an error whose message
+    // lists the query's parameters: the visitor's name, email, phone and note.
+    await payload.db.drizzle.$client.execute(
+      "CREATE TRIGGER refuse_booking BEFORE INSERT ON bookings BEGIN SELECT RAISE(ABORT, 'disk I/O error'); END",
+    );
+    const create = vi.spyOn(payload, "create");
+    const logged = vi.spyOn(payload.logger, "error").mockImplementation(() => undefined);
+    try {
+      expect(await createPublicBooking(payload, booking)).toEqual({ ok: false, code: "unknown" });
+
+      const failure = await (create.mock.results[0].value as Promise<unknown>).catch((err: unknown) => err);
+      for (const detail of details) expect(inspect(failure, { depth: null })).toContain(detail);
+      expect(logged.mock.calls).toEqual([
+        [{ err: { name: "Error", code: "SQLITE_CONSTRAINT_TRIGGER" }, attempts: 1, msg: "Website booking failed" }],
+      ]);
+      for (const detail of details) expect(inspect(logged.mock.calls, { depth: null })).not.toContain(detail);
+    } finally {
+      create.mockRestore();
+      logged.mockRestore();
+      await payload.db.drizzle.$client.execute("DROP TRIGGER refuse_booking");
+    }
   });
 
   it("let exactly one of two simultaneous requests take a slot", async () => {

@@ -92,6 +92,9 @@ export interface Booking {
    * Csak szabad időpont választható.
    */
   slot?: (number | null) | Slot;
+  /**
+   * Az ügyfél e-mailt kap, amikor a foglalás létrejön, jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.
+   */
   status: 'pending' | 'confirmed' | 'completed' | 'rejected' | 'cancelled';
   name: string;
   email: string;

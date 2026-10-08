@@ -137,6 +137,97 @@ describe("collections", () => {
     await expect(payload.delete({ collection: "slots", id: slot.id })).rejects.toThrow(/foglalás tartozik/);
   });
 
+  describe("the time of a slot", () => {
+    const HOUR = 60 * 60 * 1000;
+    const hourLater = (startsAt: string) => new Date(new Date(startsAt).getTime() + HOUR).toISOString();
+
+    /** A slot a booking holds, and the booking. */
+    async function heldSlot() {
+      const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+      const slot = await createSlot(payload);
+      const booking = await createBooking(payload, design.id, slot.id);
+      return { slot, booking };
+    }
+
+    it("stays as it is while a booking holds the slot, so the booking and its emails never show an old time", async () => {
+      const { slot, booking } = await heldSlot();
+
+      const refusal = await payload
+        .update({ collection: "slots", id: slot.id, data: { startsAt: hourLater(slot.startsAt) } })
+        .catch((err: unknown) => err);
+
+      expect(refusal).toMatchObject({
+        name: "ValidationError",
+        data: {
+          errors: [
+            {
+              path: "startsAt",
+              message: "Foglalt időpont nem módosítható: vegyél fel új időpontot, és tedd át rá a foglalást.",
+            },
+          ],
+        },
+      });
+      // The admin's toast names the field, in Hungarian: the hook passes req.t.
+      expect((refusal as Error).message).toBe("A következő mező érvénytelen: Kezdés");
+      const unchanged = await payload.findByID({ collection: "slots", id: slot.id, depth: 0 });
+      expect(unchanged).toMatchObject({ startsAt: slot.startsAt, title: slot.title });
+      expect(await payload.findByID({ collection: "bookings", id: booking.id, depth: 0 })).toMatchObject({
+        slot: slot.id,
+        slotStartsAt: slot.startsAt,
+      });
+    });
+
+    it("can change while the slot is free, and the slot is renamed", async () => {
+      const slot = await payload.create({ collection: "slots", data: { startsAt: "2026-10-14T08:00:00.000Z" } });
+
+      const moved = await payload.update({
+        collection: "slots",
+        id: slot.id,
+        data: { startsAt: "2026-10-14T09:00:00.000Z" },
+      });
+
+      expect(moved.startsAt).toBe("2026-10-14T09:00:00.000Z");
+      expect(moved.title).toBe("2026. 10. 14. (szerda) 11:00");
+    });
+
+    it("can change again once the booking that held the slot is rejected", async () => {
+      const { slot, booking } = await heldSlot();
+      await payload.update({ collection: "bookings", id: booking.id, data: { status: "rejected" } });
+
+      const moved = await payload.update({
+        collection: "slots",
+        id: slot.id,
+        data: { startsAt: hourLater(slot.startsAt) },
+      });
+
+      expect(moved.startsAt).toBe(hourLater(slot.startsAt));
+    });
+
+    it("lets a booked slot be saved when its time stays the same", async () => {
+      const { slot } = await heldSlot();
+
+      // Just the time, and the whole document back as the admin form sends it.
+      await payload.update({ collection: "slots", id: slot.id, data: { startsAt: slot.startsAt } });
+      const doc = await payload.findByID({ collection: "slots", id: slot.id, depth: 0 });
+      const saved = await payload.update({ collection: "slots", id: slot.id, data: { ...doc } });
+
+      expect(saved.startsAt).toBe(slot.startsAt);
+      expect(saved.state).toBe("Foglalt");
+    });
+
+    it("counts the same moment, written with an offset, as no change", async () => {
+      const { slot } = await heldSlot();
+
+      const saved = await payload.update({
+        collection: "slots",
+        id: slot.id,
+        data: { startsAt: slot.startsAt.replace("Z", "+00:00") },
+      });
+
+      expect(new Date(saved.startsAt).getTime()).toBe(new Date(slot.startsAt).getTime());
+    });
+  });
+
   it("keeps an image a design uses, files and all", async () => {
     const used = await createImage(payload);
     const unused = await createImage(payload);

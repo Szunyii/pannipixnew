@@ -2,7 +2,7 @@ import type { CollectionBeforeChangeHook, CollectionConfig, FieldHook } from "pa
 import { TIME_ZONE, formatSlotTitle } from "@/lib/time";
 import type { Slot } from "@/payload-types";
 import { isAdmin } from "../access";
-import { guardSlotDelete } from "../booking/guards";
+import { guardSlotDelete, guardSlotTimeChange } from "../booking/guards";
 
 const setTitle: CollectionBeforeChangeHook<Slot> = ({ data, originalDoc }) => {
   const startsAt = data.startsAt ?? originalDoc?.startsAt;
@@ -36,7 +36,7 @@ export const Slots: CollectionConfig = {
   defaultSort: "startsAt",
   disableDuplicate: true,
   access: { read: isAdmin, create: isAdmin, update: isAdmin, delete: isAdmin },
-  hooks: { beforeChange: [setTitle], beforeDelete: [guardSlotDelete] },
+  hooks: { beforeChange: [guardSlotTimeChange, setTitle], beforeDelete: [guardSlotDelete] },
   fields: [
     { name: "title", type: "text", label: "Időpont", admin: { hidden: true, disableBulkEdit: true } },
     {

@@ -275,6 +275,13 @@ describe("collections", () => {
     expect(await state(past.id)).toBe("Lejárt");
   });
 
+  it("tells the admin at the status when the customer is emailed and that a released booking stays released", () => {
+    const status = payload.collections.bookings.config.flattenedFields.find((f) => f.name === "status");
+    expect(status?.admin?.description).toBe(
+      "Az ügyfél e-mailt kap, amikor a foglalás létrejön, jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
+    );
+  });
+
   it("keeps internal fields and a booking's design out of the admin's bulk edit", () => {
     // "Edit many" skips fields that are unique, readOnly, disabled, top-level hidden or disableBulkEdit, but not admin.hidden.
     const field = (slug: "bookings" | "designs" | "slots", name: string) => {

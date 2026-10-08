@@ -130,6 +130,13 @@ describe("booking emails", () => {
     expect(sent).toEqual([]);
   });
 
+  it("stay quiet when a booking is deleted", async () => {
+    const booking = await createBooking(payload, (await design()).id, (await createSlot(payload)).id);
+    sent = [];
+    await payload.delete({ collection: "bookings", id: booking.id });
+    expect(sent).toEqual([]);
+  });
+
   it("never stop a booking when sending fails", async () => {
     // A plain function, not a mock: a vi.fn() keeps the promise it returns, which counts as handling its rejection
     // and would hide a missing .catch in the hook.

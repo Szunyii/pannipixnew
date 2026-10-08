@@ -69,7 +69,11 @@ export const Bookings: CollectionConfig = {
       defaultValue: "pending",
       label: "Állapot",
       options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ label, value })),
-      admin: { position: "sidebar" },
+      admin: {
+        position: "sidebar",
+        description:
+          "Az ügyfél e-mailt kap, amikor a foglalás létrejön, jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
+      },
     },
     {
       type: "row",

@@ -98,9 +98,13 @@ describe("booking rules", () => {
     const booking = await createBooking(payload, design.id, (await createSlot(payload)).id);
     await payload.update({ collection: "bookings", id: booking.id, data: { status } });
 
+    // Short, because the admin shows it in the narrow sidebar; the status field's description has the rest.
     await expect(
       payload.update({ collection: "bookings", id: booking.id, data: { status: "confirmed" } }),
-    ).rejects.toMatchObject({ code: "reactivate" });
+    ).rejects.toMatchObject({
+      code: "reactivate",
+      data: { errors: [{ path: "status", message: "Ez a foglalás már nem aktiválható." }] },
+    });
     // Switching between the two released statuses is fine.
     const other = status === "rejected" ? "cancelled" : "rejected";
     expect((await payload.update({ collection: "bookings", id: booking.id, data: { status: other } })).status).toBe(other);

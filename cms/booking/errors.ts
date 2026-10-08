@@ -15,7 +15,8 @@ export const BOOKING_MESSAGES: Record<BookingErrorCode, string> = {
   slot_required: "Válassz időpontot.",
   slot_past: "Ez az időpont már elmúlt, válassz másikat.",
   slot_taken: "Ezt az időpontot közben lefoglalták, válassz másikat.",
-  reactivate: "Elutasított vagy lemondott foglalás nem aktiválható újra – hozz létre új foglalást.",
+  // Short: the admin shows it in the narrow sidebar, under the status. The field's description says what to do instead.
+  reactivate: "Ez a foglalás már nem aktiválható.",
   create_released: "Új foglalás csak Függőben, Jóváhagyva vagy Elkészült állapotban hozható létre.",
 };
 

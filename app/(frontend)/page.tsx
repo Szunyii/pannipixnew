@@ -32,7 +32,7 @@ export default async function Home() {
       <Header />
       <main id="main">
         <Hero />
-        <Paths flashPrice={priceRange(designs)} flashRule={ruleSummary(categories)} />
+        <Paths flashPrice={priceRange(designs)} flashRule={ruleSummary(designs, categories)} />
         <FlashCollection designs={designs} categories={categories} />
         <Spotlight designs={designs} />
         <Process />

@@ -29,16 +29,24 @@ export function priceRange(designs: FlashDesign[]) {
   return min === max ? formatPrice(min) : `${formatPrice(min).replace(" Ft", "")} – ${formatPrice(max)}`;
 }
 
-/** The rule every collection books by; null when they differ or there are none. */
-export function sharedRule(categories: readonly Pick<FlashCategory, "rule">[]): BookingRule | null {
-  const rule = categories[0]?.rule;
-  return rule && categories.every((c) => c.rule === rule) ? rule : null;
+type Designs = readonly Pick<FlashDesign, "availability">[];
+type Categories = readonly Pick<FlashCategory, "rule">[];
+
+/**
+ * The rule every design on the site books by; null when they differ or there are none. It goes by the designs shown:
+ * a collection with no visible design (empty, or all switched off) would otherwise make the rules look mixed. Only
+ * while no design is shown do the collections stand in.
+ */
+export function sharedRule(designs: Designs, categories: Categories): BookingRule | null {
+  const rules = designs.length > 0 ? designs.map((d) => d.availability.rule) : categories.map((c) => c.rule);
+  const rule = rules[0];
+  return rule && rules.every((r) => r === rule) ? rule : null;
 }
 
 const ruleNames: Record<BookingRule, string> = { single: "Egyszeri", limited: "Limitált", unlimited: "Korlátlan" };
 
 /** How often a flash design can be booked, in a word or two for the services overview. */
-export function ruleSummary(categories: readonly Pick<FlashCategory, "rule">[]) {
-  const rule = sharedRule(categories);
+export function ruleSummary(designs: Designs, categories: Categories) {
+  const rule = sharedRule(designs, categories);
   return rule ? ruleNames[rule] : "Kollekciónként eltérő";
 }

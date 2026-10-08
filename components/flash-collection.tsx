@@ -22,7 +22,7 @@ const sorters: Record<Sort, (a: FlashDesign, b: FlashDesign) => number> = {
   "price-desc": (a, b) => soldOutLast(a, b) || b.price - a.price,
 };
 
-/** How often a design is tattooed, when every collection books by the same rule. */
+/** How often a design is tattooed, when every design shown books by the same rule. */
 const ruleIntro: Record<BookingRule, string> = {
   single: "Mindegyik csak egyszer kerül bőrre, utána lekerül a kínálatból.",
   limited: "Mindegyik csak meghatározott számú alkalommal készül el.",
@@ -114,7 +114,7 @@ export function FlashCollection({ designs, categories }: { designs: FlashDesign[
   const allChip = useRef<HTMLButtonElement>(null);
 
   const visible = designs.filter((d) => filter === null || d.collection === filter).sort(sorters[sort]);
-  const rule = sharedRule(categories);
+  const rule = sharedRule(designs, categories);
 
   const choose = (name: string | null) => {
     setFilter(name);

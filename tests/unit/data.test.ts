@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type FlashDesign, availabilityLabel, priceRange, ruleSummary, sharedRule } from "@/components/data";
-import { availability } from "@/lib/booking-rules";
+import { type BookingRule, availability } from "@/lib/booking-rules";
 
 let sequence = 0;
 
@@ -19,6 +19,11 @@ function design(price: number, { soldOut = false } = {}): FlashDesign {
     images: [{ src: "/flash/teszt.webp", alt: "Tesztminta", kind: "art", label: "Minta" }],
     availability: availability({ rule: "single" }, soldOut ? 1 : 0),
   };
+}
+
+/** A design that can still be booked, under the given rule. */
+function designUnder(rule: BookingRule): FlashDesign {
+  return { ...design(90000), availability: availability({ rule, limit: 3 }, 0) };
 }
 
 describe("priceRange", () => {
@@ -64,18 +69,40 @@ describe("ruleSummary", () => {
     ["single", "Egyszeri"],
     ["limited", "Limitált"],
     ["unlimited", "Korlátlan"],
-  ] as const)("names the rule when every collection is %s", (rule, label) => {
-    expect(ruleSummary([{ rule }, { rule }])).toBe(label);
-    expect(sharedRule([{ rule }, { rule }])).toBe(rule);
+  ] as const)("names the rule when every design shown is %s", (rule, label) => {
+    const designs = [designUnder(rule), designUnder(rule)];
+    expect(ruleSummary(designs, [])).toBe(label);
+    expect(sharedRule(designs, [])).toBe(rule);
   });
 
-  it("says it varies when the collections differ", () => {
-    expect(ruleSummary([{ rule: "single" }, { rule: "single" }, { rule: "unlimited" }])).toBe("Kollekciónként eltérő");
-    expect(sharedRule([{ rule: "limited" }, { rule: "single" }])).toBeNull();
+  it("says it varies when the designs differ", () => {
+    const designs = [designUnder("single"), designUnder("single"), designUnder("unlimited")];
+    expect(ruleSummary(designs, [])).toBe("Kollekciónként eltérő");
+    expect(sharedRule([designUnder("limited"), designUnder("single")], [])).toBeNull();
   });
 
-  it("says it varies when there are no collections", () => {
-    expect(ruleSummary([])).toBe("Kollekciónként eltérő");
-    expect(sharedRule([])).toBeNull();
+  it("goes by the designs shown, not by collections that have none", () => {
+    // Only the single-use collection has a visible design: the unlimited one is empty or all hidden.
+    const categories = [{ rule: "single" }, { rule: "unlimited" }] as const;
+    expect(ruleSummary([designUnder("single")], categories)).toBe("Egyszeri");
+    expect(sharedRule([designUnder("single")], categories)).toBe("single");
+  });
+
+  it("counts a sold-out design: it is still shown, under its rule", () => {
+    const soldOut = design(90000, { soldOut: true });
+    expect(ruleSummary([soldOut, designUnder("unlimited")], [])).toBe("Kollekciónként eltérő");
+    expect(ruleSummary([soldOut], [{ rule: "unlimited" }])).toBe("Egyszeri");
+  });
+
+  it("falls back to the collections when there are no designs", () => {
+    expect(ruleSummary([], [{ rule: "limited" }, { rule: "limited" }])).toBe("Limitált");
+    expect(sharedRule([], [{ rule: "limited" }, { rule: "limited" }])).toBe("limited");
+    expect(ruleSummary([], [{ rule: "single" }, { rule: "unlimited" }])).toBe("Kollekciónként eltérő");
+    expect(sharedRule([], [{ rule: "limited" }, { rule: "single" }])).toBeNull();
+  });
+
+  it("says it varies when there are neither designs nor collections", () => {
+    expect(ruleSummary([], [])).toBe("Kollekciónként eltérő");
+    expect(sharedRule([], [])).toBeNull();
   });
 });

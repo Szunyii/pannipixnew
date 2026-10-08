@@ -49,12 +49,12 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 Ez a lista az első élesítés lépéseit adja. Későbbi deployoknál (főleg új migrációnál) előbb olvasd el a [Biztonságos üzemeltetés](#biztonságos-üzemeltetés) szakaszt: mentés, és a migráció kipróbálása az éles adatbázis másolatán.
 
 0. **Node.js:** a hPanelben válaszd ki a 22-es verziót. Az oldal 20.9-től fut, a tesztekhez viszont legalább 22.12 kell. A magyar dátumokhoz teljes ICU kell; a hivatalos Node buildek ilyenek. Ellenőrzés: `node -p "new Intl.DateTimeFormat('hu-HU').resolvedOptions().locale"` → `hu-HU` (más érték esetén a Node nem teljes ICU-s).
-1. **Környezeti változók:** állítsd be az alkalmazás környezeti változóiként (a hPanelben, vagy a deploy mappa `.env` fájljában) az `.env.example` összes kulcsát a saját értékeiddel (a `SITE_URL` az éles `https://…` cím legyen). A `DATABASE_URL`-t és a `MEDIA_DIR`-t a **deploy mappán kívüli**, írható könyvtárra irányítsd, például:
+1. **Környezeti változók:** állítsd be az alkalmazás környezeti változóiként (a hPanelben vagy a deploy mappa `.env` fájljában) az `.env.example` összes kulcsát a saját értékeiddel (a `SITE_URL` az éles `https://…` cím legyen). A `DATABASE_URL`-t és a `MEDIA_DIR`-t a **deploy mappán kívüli**, írható könyvtárra irányítsd, például:
    - `DATABASE_URL=file:/home/<felhasználó>/pannipix-data/pannipix.db`
    - `MEDIA_DIR=/home/<felhasználó>/pannipix-data/media`
 
-   Az adatbázisfájl mappájának is írhatónak kell lennie: WAL módban az adatbázisfájl mellé `-wal` és `-shm` fájlok is kerülnek.
    Élesben mindkettő kötelező. Ha bármelyik hiányzik, az admin, az API és a főoldal is szándékosan 500-as hibát ad, hogy semmi ne kerülhessen a deploy mappába.
+   Az adatbázisfájl mappájának is írhatónak kell lennie: WAL módban az adatbázisfájl mellé `-wal` és `-shm` fájlok is kerülnek.
 2. **HTTPS:** az admin bejelentkezéshez kell, mert a munkamenet-süti élesben csak HTTPS-en él. Kapcsold be az SSL-t a domainhez.
 3. **Build és indítás:** `npm run build`, indítás: `npm start`. Ha a build memóriahiány miatt leáll: `NODE_OPTIONS=--max-old-space-size=4096 npm run build`.
 
@@ -62,7 +62,7 @@ Ez a lista az első élesítés lépéseit adja. Későbbi deployoknál (főleg 
 4. **Első indítás után:** nyisd meg a `/admin` oldalt, és azonnal hozd létre az admin fiókot (amíg nincs fiók, bárki létrehozhatja az elsőt), majd vedd fel a kollekciókat, a mintákat és az időpontokat. Ezután próbáld ki élőben is. A próbához legalább 4 szabad időpont és legalább 4 szabad alkalom kell a mintákon (elég egy *Korlátlan* kollekcióbeli minta is); a végén töröld a próbafoglalásokat a *Foglalások* között.
    - Ugyanarról az eszközről foglalj egymás után négyszer: az első három átmegy, a negyediknél az oldal a „Túl sok foglalás érkezett erről a hálózatról. Próbáld újra később, vagy írj Instagramon: @pannipix.” üzenetet adja.
    - Egy másik hálózatról (pl. mobilnetről) még lehet foglalni.
-   - Nézd meg, megérkezett-e az admin és az ügyfél levele (lásd a 6. pontot).
+   - Nézd meg, megérkezett-e a két levél (az adminnak és az ügyfélnek; lásd a 6. pontot).
 
    **Ha a 4. foglalás is átmegy, vagy a másik hálózatról sem lehet foglalni:** a `TRUSTED_PROXY_HOPS` alapértéke 1 (a Hostinger saját proxyja), bekapcsolt Hostinger CDN mellett várhatóan 2. Állítsd át, és indítsd újra az alkalmazást. Ha sem 1-gyel, sem 2-vel nem utasítja vissza az oldal a 4. foglalást (jele a naplóban: `Booking limit skipped: no usable visitor address in X-Forwarded-For; check TRUSTED_PROXY_HOPS (see README).`), a tárhely nem adja át a látogató címét. Ilyenkor a korlát nem működik, és csak a csapdamező véd; ha ez kevés, jöhet egy Cloudflare Turnstile.
 
@@ -71,7 +71,7 @@ Ez a lista az első élesítés lépéseit adja. Későbbi deployoknál (főleg 
    ```ts
    serverActions: { allowedOrigins: ["pannipix.hu"] },
    ```
-5. **Mentés:** a `pannipix-data` mappát (adatbázis + képek) rendszeresen menteni kell. Futó alkalmazás mellett az adatbázist így mentsd, teljes útvonallal (ha a fájl nem ott van, ahol a parancsot futtatod, a `sqlite3` hiba nélkül egy üres adatbázist ment): `sqlite3 /home/<felhasználó>/pannipix-data/pannipix.db ".backup <mentés-fájl>"`. Ha a szerveren nincs `sqlite3`, állítsd le az alkalmazást, és a `.db`, `-wal` és `-shm` fájlt együtt másold.
+5. **Mentés:** a `pannipix-data` mappát (adatbázis + képek) rendszeresen menteni kell. Futó alkalmazás mellett az adatbázist így mentsd, teljes útvonallal (ha a fájl nem ott van, ahol a parancsot futtatod, az `sqlite3` hiba nélkül egy üres adatbázist ment): `sqlite3 /home/<felhasználó>/pannipix-data/pannipix.db ".backup <mentés-fájl>"`. Ha a szerveren nincs `sqlite3`, állítsd le az alkalmazást, és a `.db`, `-wal` és `-shm` fájlt együtt másold.
 6. **E-mail kézbesítés:** a feladó domainjéhez (pl. `pannipix.hu`) állítsd be a Hostingeren az SPF-et és a DKIM-et, lehetőleg a DMARC-ot is, különben a Gmail spamnek nézheti a leveleket. A sikertelen küldés csak a szerver naplójában látszik (hPanel → a Node.js alkalmazás naplója). Ha az `ADMIN_EMAIL`, a `SITE_URL` vagy az `SMTP_HOST` hiányzik, a Payload indulásakor (az első kérésnél) figyelmeztetés kerül a naplóba.
 
 ## Biztonságos üzemeltetés

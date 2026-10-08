@@ -9,6 +9,9 @@ export type { DesignImage, FlashCategory, FlashDesign } from "@/lib/flash-types"
 
 export const styles = ["Conceptual", "Abstract", "Microrealism"] as const;
 
+/** What the services overview shows for a fact each design states itself, or when there is nothing to go by yet. */
+export const PER_DESIGN = "Mintánként megadva";
+
 /** One line on how often a design can still be booked. */
 export function availabilityLabel({ rule, remaining, soldOut }: Availability) {
   if (soldOut) return "Elkelt";
@@ -44,6 +47,7 @@ const ruleNames: Record<BookingRule, string> = { single: "Egyszeri", limited: "L
 
 /** How often a flash design can be booked, in a word or two for the services overview. */
 export function ruleSummary(designs: Designs, categories: Categories) {
+  if (designs.length === 0 && categories.length === 0) return PER_DESIGN;
   const rule = sharedRule(designs, categories);
   return rule ? ruleNames[rule] : "Kollekciónként eltérő";
 }

@@ -72,7 +72,7 @@ export const Bookings: CollectionConfig = {
       admin: {
         position: "sidebar",
         description:
-          "Az ügyfél e-mailt kap, amikor a foglalás létrejön, jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
+          "Az ügyfél e-mailt kap, amikor függő vagy jóváhagyott foglalás jön létre, illetve amikor jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
       },
     },
     {

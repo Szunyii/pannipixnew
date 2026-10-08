@@ -278,7 +278,7 @@ describe("collections", () => {
   it("tells the admin at the status when the customer is emailed and that a released booking stays released", () => {
     const status = payload.collections.bookings.config.flattenedFields.find((f) => f.name === "status");
     expect(status?.admin?.description).toBe(
-      "Az ügyfél e-mailt kap, amikor a foglalás létrejön, jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
+      "Az ügyfél e-mailt kap, amikor függő vagy jóváhagyott foglalás jön létre, illetve amikor jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
     );
   });
 

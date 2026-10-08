@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { PER_DESIGN } from "./data";
 import { Arrow, Axis, btn, container } from "./ui";
 
 // An undrawn composition: the axis, orbits and sizing marks a custom piece starts from.
@@ -56,8 +57,8 @@ function flashService(price: string | null, rule: string) {
     title: "Válassz egy kész mintát.",
     body: "Előre megrajzolt darabok a PANNIPIX kollekciókból, fix áron. Kiválasztod a mintát és egy szabad időpontot, én pedig visszaigazolom a foglalást.",
     facts: [
-      ["Ár", price ?? "Mintánként megadva"],
-      ["Méret", "Mintánként megadva"],
+      ["Ár", price ?? PER_DESIGN],
+      ["Méret", PER_DESIGN],
       ["Alkalmak", rule],
     ],
     cta: { href: "#flash", label: "Flash minták böngészése", style: btn.outline },

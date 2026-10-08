@@ -130,6 +130,17 @@ describe("booking emails", () => {
     expect(sent).toEqual([]);
   });
 
+  it.each([
+    ["pending", ["Megkaptam a foglalásod"]],
+    ["confirmed", ["Visszaigazolva"]],
+    ["completed", []],
+  ] as const)("tell the customer of a booking the admin creates as %s: %j", async (status, subjects) => {
+    await createBooking(payload, (await design()).id, (await createSlot(payload)).id, { status });
+    // Only the customer hears of it: the admin made the booking, and one created as Elkészült sends nothing.
+    expect(sent.map((m) => m.to)).toEqual(subjects.map(() => customer.email));
+    expect(sent.map((m) => m.subject)).toEqual(subjects.map((subject) => expect.stringContaining(subject)));
+  });
+
   it("stay quiet when a booking is deleted", async () => {
     const booking = await createBooking(payload, (await design()).id, (await createSlot(payload)).id);
     sent = [];

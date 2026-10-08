@@ -101,8 +101,8 @@ describe("ruleSummary", () => {
     expect(sharedRule([], [{ rule: "limited" }, { rule: "single" }])).toBeNull();
   });
 
-  it("says it varies when there are neither designs nor collections", () => {
-    expect(ruleSummary([], [])).toBe("Kollekciónként eltérő");
+  it("shows the other facts' placeholder when there are neither designs nor collections", () => {
+    expect(ruleSummary([], [])).toBe("Mintánként megadva");
     expect(sharedRule([], [])).toBeNull();
   });
 });

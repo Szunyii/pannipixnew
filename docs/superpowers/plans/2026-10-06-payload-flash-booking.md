@@ -2128,7 +2128,7 @@ export const Bookings: CollectionConfig = {
       admin: {
         position: "sidebar",
         description:
-          "Az ügyfél e-mailt kap, amikor a foglalás létrejön, jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
+          "Az ügyfél e-mailt kap, amikor függő vagy jóváhagyott foglalás jön létre, illetve amikor jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
       },
     },
     {
@@ -2594,7 +2594,7 @@ describe("collections", () => {
   it("tells the admin at the status when the customer is emailed and that a released booking stays released", () => {
     const status = payload.collections.bookings.config.flattenedFields.find((f) => f.name === "status");
     expect(status?.admin?.description).toBe(
-      "Az ügyfél e-mailt kap, amikor a foglalás létrejön, jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
+      "Az ügyfél e-mailt kap, amikor függő vagy jóváhagyott foglalás jön létre, illetve amikor jóváhagyod, elutasítod vagy lemondod; a törlés nem küld levelet. Elutasított vagy lemondott foglalás nem aktiválható újra: ilyenkor hozz létre újat.",
     );
   });
 
@@ -3338,6 +3338,26 @@ describe("website bookings", () => {
     }
   });
 
+  it("log which field Payload refused, not what the visitor entered", async () => {
+    const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+    const slot = await createSlot(payload);
+    // An address Payload's email field turns away.
+    const booking = { ...publicInput(design.id, slot.id), email: "not-an-email" };
+    const logged = vi.spyOn(payload.logger, "error").mockImplementation(() => undefined);
+    try {
+      expect(await createPublicBooking(payload, booking)).toEqual({ ok: false, code: "unknown" });
+
+      expect(logged.mock.calls).toEqual([
+        [{ err: { name: "ValidationError", paths: ["email"] }, attempts: 1, msg: "Website booking failed" }],
+      ]);
+      for (const detail of [booking.name, booking.email, booking.phone]) {
+        expect(inspect(logged.mock.calls, { depth: null })).not.toContain(detail);
+      }
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
   it("let exactly one of two simultaneous requests take a slot", async () => {
     const category = await createCategory(payload, "unlimited");
     const [a, b] = [await createDesign(payload, category.id), await createDesign(payload, category.id)];
@@ -3418,7 +3438,12 @@ describe("createPublicBooking", () => {
     create.mockRejectedValue(seatConflict());
     expect(await createPublicBooking(payload, input)).toEqual({ ok: false, code: "unknown" });
     expect(create).toHaveBeenCalledTimes(MAX_ATTEMPTS);
-    expect(error).toHaveBeenCalledTimes(1);
+    // The log says which field the unique index kept turning away.
+    expect(error).toHaveBeenCalledExactlyOnceWith({
+      err: { name: "ValidationError", paths: ["design_id"] },
+      attempts: MAX_ATTEMPTS,
+      msg: "Website booking failed",
+    });
   });
 
   it("lets waiting work run before it retries, so the losers of one race don't retry in lockstep", async () => {
@@ -3892,6 +3917,17 @@ describe("booking emails", () => {
     expect(sent).toEqual([]);
   });
 
+  it.each([
+    ["pending", ["Megkaptam a foglalásod"]],
+    ["confirmed", ["Visszaigazolva"]],
+    ["completed", []],
+  ] as const)("tell the customer of a booking the admin creates as %s: %j", async (status, subjects) => {
+    await createBooking(payload, (await design()).id, (await createSlot(payload)).id, { status });
+    // Only the customer hears of it: the admin made the booking, and one created as Elkészült sends nothing.
+    expect(sent.map((m) => m.to)).toEqual(subjects.map(() => customer.email));
+    expect(sent.map((m) => m.subject)).toEqual(subjects.map((subject) => expect.stringContaining(subject)));
+  });
+
   it("stay quiet when a booking is deleted", async () => {
     const booking = await createBooking(payload, (await design()).id, (await createSlot(payload)).id);
     sent = [];
@@ -4032,12 +4068,11 @@ describe("booking emails", () => {
 
     expect(sent).toEqual([]);
     expect(logged).toHaveBeenCalledTimes(2);
-    expect(logged).toHaveBeenNthCalledWith(1, {
-      err: { name: "RangeError" },
-      msg: 'Booking email "admin-new" for booking 7 failed',
-    });
+    // A bug in our own code keeps its stack, so the log says where: here Intl refusing the date in lib/time.ts.
+    const bug = { name: "RangeError", stack: expect.stringContaining("lib/time.ts") };
+    expect(logged).toHaveBeenNthCalledWith(1, { err: bug, msg: 'Booking email "admin-new" for booking 7 failed' });
     expect(logged).toHaveBeenNthCalledWith(2, {
-      err: { name: "RangeError" },
+      err: bug,
       msg: 'Booking email "customer-received" for booking 7 failed',
     });
   });
@@ -5209,6 +5244,9 @@ export type { DesignImage, FlashCategory, FlashDesign } from "@/lib/flash-types"
 
 export const styles = ["Conceptual", "Abstract", "Microrealism"] as const;
 
+/** What the services overview shows for a fact each design states itself, or when there is nothing to go by yet. */
+export const PER_DESIGN = "Mintánként megadva";
+
 /** One line on how often a design can still be booked. */
 export function availabilityLabel({ rule, remaining, soldOut }: Availability) {
   if (soldOut) return "Elkelt";
@@ -5244,6 +5282,7 @@ const ruleNames: Record<BookingRule, string> = { single: "Egyszeri", limited: "L
 
 /** How often a flash design can be booked, in a word or two for the services overview. */
 export function ruleSummary(designs: Designs, categories: Categories) {
+  if (designs.length === 0 && categories.length === 0) return PER_DESIGN;
   const rule = sharedRule(designs, categories);
   return rule ? ruleNames[rule] : "Kollekciónként eltérő";
 }
@@ -5815,7 +5854,7 @@ export function Spotlight({ designs }: { designs: FlashDesign[] }) {
 
 - [ ] **Step 7: `components/paths.tsx`: árintervallum propként, foglalás-szöveg**
 
-A `const services = [ ... ];` blokkot (a `Construction()` függvény után, a `Paths()` előtt) cseréld le erre a kettőre:
+Az importok közé: `import { PER_DESIGN } from "./data";`. A `const services = [ ... ];` blokkot (a `Construction()` függvény után, a `Paths()` előtt) cseréld le erre a kettőre:
 
 ```tsx
 const customService = {
@@ -5839,8 +5878,8 @@ function flashService(price: string | null) {
     title: "Válassz egy kész mintát.",
     body: "Előre megrajzolt darabok a PANNIPIX kollekciókból, fix áron. Kiválasztod a mintát és egy szabad időpontot, én pedig visszaigazolom a foglalást.",
     facts: [
-      ["Ár", price ?? "Mintánként megadva"],
-      ["Méret", "Mintánként megadva"],
+      ["Ár", price ?? PER_DESIGN],
+      ["Méret", PER_DESIGN],
       ["Alkalmak", "Kollekciónként eltérő"],
     ],
     cta: { href: "#flash", label: "Flash minták böngészése", style: btn.outline },
@@ -7414,7 +7453,7 @@ Ha van változás: commit egy, a javítást leíró üzenettel és a `Co-Authore
 A fenti blokkok a végleges kódot mutatják. Az ág végső átnézése után ezek kerültek be:
 
 - **Foglalt időpont kezdése nem módosítható** (`guardSlotTimeChange` a `cms/booking/guards.ts`-ben, a `Slots` `beforeChange` hookjai között elsőként). Különben a foglalás pillanatképe és a levelek a régi időt mutatnák. Tesztek: `tests/int/collections.test.ts`.
-- **A naplóba nem kerül a látogató adata:** a hibákat a `loggableError` szűkíti le (név, kód, SMTP válaszkód és parancs). Tesztek: `tests/unit/log.test.ts`, `tests/unit/public-booking-retry.test.ts`, `tests/int/emails.test.ts`, `tests/int/public-booking.test.ts`.
+- **A naplóba nem kerül a látogató adata:** a hibákat a `loggableError` szűkíti le (név, kód, SMTP válaszkód és parancs; érvénytelen mezőknél a mezők neve, programhibánál, azaz `TypeError`, `RangeError` vagy `ReferenceError` esetén, a stack is). Tesztek: `tests/unit/log.test.ts`, `tests/unit/public-booking-retry.test.ts`, `tests/int/emails.test.ts`, `tests/int/public-booking.test.ts`.
 - **A közös szabály a megjelenő mintákból számolódik** (`sharedRule(designs, categories)`, `ruleSummary(designs, categories)`), a kollekciók csak akkor számítanak, ha nincs minta.
 - **Az *Állapot* mező leírása** elmondja, mikor kap az ügyfél levelet; az újraaktiválás hibaüzenete rövidebb lett („Ez a foglalás már nem aktiválható.”).
 - **Egy helyen áll össze a minta neve** (`lib/design-name.ts`): a minta címe az adminban, a foglalás pillanatképe és az oldal is ezt használja. Teszt: `tests/unit/design-name.test.ts`.
@@ -7422,7 +7461,7 @@ A fenti blokkok a végleges kódot mutatják. Az ág végső átnézése után e
 `cms/log.ts`:
 
 ```ts
-/** What the server log may say about a failure: its kind, and the codes of the database driver or the mail server. */
+/** What the server log may say about a failure instead of the error itself. */
 export type LoggableError = {
   name: string;
   code?: string | number;
@@ -7430,26 +7469,50 @@ export type LoggableError = {
   responseCode?: number;
   /** The mail command that failed, e.g. "RCPT TO". */
   command?: string;
+  /** The fields a validation error is about, e.g. ["email"]. Field names are ours, never what was entered. */
+  paths?: string[];
+  /** Where a bug in our own code happened. Only for the kinds of error whose message carries no input. */
+  stack?: string;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 const isCode = (value: unknown): value is string | number => typeof value === "string" || typeof value === "number";
 
 /**
+ * The errors that mean a bug in our own code. Their messages describe the code ("x.map is not a function", "Invalid
+ * time value"), not the input. A SyntaxError doesn't belong here: JSON.parse quotes the text it choked on.
+ */
+const BUGS = new Set(["TypeError", "RangeError", "ReferenceError"]);
+
+/** The paths of the fields a Payload ValidationError refused; undefined when it names none. */
+function fieldPaths(err: Record<string, unknown>): string[] | undefined {
+  const errors = isRecord(err.data) && Array.isArray(err.data.errors) ? err.data.errors : [];
+  const paths = errors.flatMap((e) => (isRecord(e) && typeof e.path === "string" ? [e.path] : []));
+  return paths.length > 0 ? paths : undefined;
+}
+
+/**
  * Reduces a failure to what is safe to log. An error is never logged whole: Drizzle appends the query's parameters to
  * its message (a visitor's name, email, phone and note), and a mail error carries the addresses in its message,
- * `response` and `rejected`. Only identifiers are kept: the error's name, the code of the driver error underneath
- * (Drizzle wraps it as `cause`), and the mail server's reply code and command. Message and stack stay out.
+ * `response` and `rejected`. So the kind of error decides what is kept:
+ * - Every error: its name, the code of the driver error underneath (Drizzle wraps it as `cause`), and the mail
+ *   server's reply code and command. Its message and stack stay out.
+ * - A ValidationError: also the paths of the fields it refused. Its messages could echo what was entered.
+ * - A TypeError, RangeError or ReferenceError: also the stack, so a bug in our own code still has a location.
+ * The stack is never edited to cut the message out; only these kinds of error show theirs.
  */
 export function loggableError(err: unknown): LoggableError {
   if (!isRecord(err)) return { name: "unknown" };
+  const name = typeof err.name === "string" ? err.name : "unknown";
   const cause = isRecord(err.cause) ? err.cause : {};
   // Plain values only: an object a library attached to the error could hold what must stay out of the log.
   return {
-    name: typeof err.name === "string" ? err.name : "unknown",
+    name,
     code: [cause.code, err.code].find(isCode),
     responseCode: typeof err.responseCode === "number" ? err.responseCode : undefined,
     command: typeof err.command === "string" ? err.command : undefined,
+    paths: name === "ValidationError" ? fieldPaths(err) : undefined,
+    stack: BUGS.has(name) && typeof err.stack === "string" ? err.stack : undefined,
   };
 }
 ```

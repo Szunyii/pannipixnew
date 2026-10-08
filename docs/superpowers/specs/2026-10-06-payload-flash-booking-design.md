@@ -32,7 +32,7 @@ A flash minták ma be vannak égetve a kódba (`components/data.ts`), és a fel�
 - `next.config.ts`: `withPayload()` csomagolja. A meglévő `allowedDevOrigins`, `images.qualities` és `experimental.turbopackPluginRuntimeStrategy` megmarad.
 - **Adatbázis:** `@payloadcms/db-sqlite` (libsql), `client.url = DATABASE_URL`, `wal: true`, `busyTimeout: 5000`. A tranzakciók kikapcsolva maradnak (ez az alapértelmezés), az egyidejűségi garanciát egyedi indexek adják (6.4).
 - **Képek:** `media` upload gyűjtemény, `staticDir = MEDIA_DIR`. A Payload szolgálja ki őket (`/api/media/file/...`), a `next/image` optimalizálja.
-- **E-mail:** `@payloadcms/email-nodemailer`, SMTP. Ha nincs beállítva SMTP (fejlesztés), a Payload a konzolra naplóz.
+- **E-mail:** `@payloadcms/email-nodemailer`, SMTP. Ha nincs beállítva SMTP (fejlesztés), a Payload csak egy sort naplóz a konzolra a címzettel és a tárggyal; a levél szövege nem látszik.
 - **Admin nyelve:** magyar (`@payloadcms/translations/languages/hu`), magyar gyűjtemény- és mezőcímkékkel. Időzóna: Europe/Budapest.
 - **Séma:** fejlesztésben `push` (automatikus szinkron). Élesben a `migrations/` mappába generált, commitolt migrációk futnak (`prodMigrations`), folyamatonként egyszer, a Payload első használatakor (az indítás utáni első kérésnél); a `next build` alatt soha.
 
@@ -40,7 +40,7 @@ Kódszervezés:
 
 ```
 payload.config.ts
-payload/
+cms/
   collections/   Users, Media, Categories, Designs, Slots, Bookings
   booking/       szabályok (limit, sorszámkiosztás, állapotok) és hookok
   emails/        sablonok és küldés
@@ -87,7 +87,7 @@ Megjelenített név: `${category.name} #${number}`. A hátralévő alkalmak szá
 |---|---|---|
 | `startsAt` | date (nap + idő), Europe/Budapest | kötelező, egyedi |
 | `title` | text, automatikus, csak olvasható | pl. „2026. 10. 14. (szerda) 10:00”; ez látszik a kapcsolatválasztókban |
-| állapot | számított (virtuális) | listaoszlop: *Szabad* / *Foglalt* |
+| állapot | számított (virtuális) | listaoszlop: *Szabad* / *Foglalt* / *Lejárt* (elmúlt, és nincs rajta foglalás) |
 
 ### 4.4 Foglalások (`bookings`)
 
@@ -261,11 +261,13 @@ DATABASE_URL=file:./.data/pannipix.db
 MEDIA_DIR=./.data/media
 SITE_URL=http://localhost:3000
 ADMIN_EMAIL=hello@pannipix.hu
-EMAIL_FROM=PANNIPIX <hello@pannipix.hu>
-SMTP_HOST=smtp.hostinger.com
+EMAIL_FROM_ADDRESS=hello@pannipix.hu
+EMAIL_FROM_NAME=PANNIPIX
+SMTP_HOST=                 # élesben pl. smtp.hostinger.com; üresen a levelek a konzolra mennek
 SMTP_PORT=465
 SMTP_USER=
 SMTP_PASS=
+TRUSTED_PROXY_HOPS=1
 ```
 
 - **Fejlesztés:** a `.data/` mappa gitignore-olt.
@@ -289,7 +291,7 @@ SMTP_PASS=
   9. A törlési szabályok.
 - **Egységtesztek:** bemenet-ellenőrzés, a szabad sorszám számítása, időpont-formázás.
 - Az `npm run lint`, a `tsc --noEmit` és a `next build` hiba nélkül fut le.
-- **Kézi végigjátszás böngészőben:** kollekció, minta és időpont felvétele az adminban → foglalás az oldalon → jóváhagyás → e-mail a konzolban. Mobil nézetben is.
+- **Kézi végigjátszás böngészőben:** kollekció, minta és időpont felvétele az adminban → foglalás az oldalon → jóváhagyás → e-mail sor (címzett, tárgy) a konzolban. Mobil nézetben is.
 
 ## 13. Hatókörön kívül
 

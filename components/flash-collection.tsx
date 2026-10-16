@@ -104,9 +104,10 @@ function FlashCard({ design }: { design: FlashDesign }) {
 
         <Link
           href={href}
-          className="group/more mt-4 flex h-12 items-center justify-center gap-3 rounded-[8px] border border-hairline text-[0.9375rem] transition-[border-color,scale] duration-300 hover:border-ink active:scale-[0.98] active:duration-100"
+          className="group/more relative mt-4 flex h-12 items-center justify-center gap-3 rounded-[8px] border border-hairline text-[0.9375rem] transition-[border-color,scale] duration-300 hover:border-ink active:scale-[0.98] active:duration-100"
         >
           <ArrowRight size={18} className="transition-transform duration-300 ease-settle group-hover/more:translate-x-1" />
+          {/* The link is relative so this absolute span stays inside the row's scroller instead of widening the page. */}
           Részletek<span className="sr-only">: {name}</span>
         </Link>
       </article>

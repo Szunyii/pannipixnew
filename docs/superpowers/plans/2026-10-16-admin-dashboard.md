@@ -18,6 +18,7 @@
 
 - **AGENTS.md:** ez a Next verzió eltér a megszokottól. Kétség esetén olvasd a `node_modules/next/dist/docs/` megfelelő fejezetét (a CSS Module-okról: `01-app/01-getting-started/11-css.md`).
 - **Előfeltétel:** a 0. feladat. Amíg a munkafában nem commitolt változás van azokban a fájlokban, amelyekhez ez a terv hozzányúl, ne kezdj bele: a feladatok commitjai magukkal vinnék a felhasználó más munkáját.
+- **Worktree:** ha külön worktree-ben dolgozol (`superpowers:using-git-worktrees`), a `node_modules`-t APFS klónnal másold be (`cp -Rc <repo>/node_modules <worktree>/node_modules`), és a `.env`-et is másold át, mert a `generate:importmap` és a `generate:types` betölti a configot. A tesztekhez `.env` nem kell, a `tests/setup.ts` maga állítja be a környezetet. A worktree-ben nincs fejlesztői adatbázis, és ne is indíts benne `next dev`-et a repó `.data`-jával.
 - **Futó dev szerver:** a felhasználó `next dev`-je gyakran fut a repóban (3000-es port). Menet közben újratölt, és a config változásakor maga is újragenerálja az import mapot és a típusokat. Sémaváltozás nincs, így nem kérdez a terminálban. Ne indíts második `next dev`-et a repóban; a kézi próbát elkülönített másolaton végezd (8. feladat).
 - **Fejlesztői adatbázis:** ne hozz létre foglalást a `.data/` adatbázisban. Ha a `.env`-ben van SMTP, valódi e-mail menne ki. A tesztek saját, ideiglenes adatbázist használnak (`tests/setup.ts`).
 - **Kísérleti API:** az `admin.dashboard` opciót a Payload 3.90.2 kísérletinek jelöli. Csomagot ne frissíts.
@@ -63,7 +64,9 @@ Ha a lista üres, vagy egyik sora sem érinti ezeket a fájlokat, mehetsz az 1. 
 
 - [ ] **Step 2: Ha érinti, állj meg és kérdezz**
 
-A terv írásakor (2026-10-16) a munkafában sok, nem commitolt változás volt, köztük ezek közül hét fájlban. Ezek a felhasználó korábbi munkái. Kérd meg, hogy commitolja őket (vagy adjon engedélyt, hogy egy általa jóváhagyott üzenettel commitold), és csak utána folytasd. Saját döntésből ne commitold, ne stash-eld és ne dobd el őket.
+Ezek a felhasználó (vagy egy másik munkamenet) változásai. Kérd meg, hogy commitolja őket (vagy adjon engedélyt, hogy egy általa jóváhagyott üzenettel commitold), és csak utána folytasd. Saját döntésből ne commitold, ne stash-eld és ne dobd el őket.
+
+A terv commitolásakor (2026-10-16, `8340877`) a munkafában csak a `components/` és az `app/` alatt volt nem commitolt változás, a fenti fájlok tiszták voltak. Ugyanerre az ágra közben egy másik munkamenet is commitolt (design-review javítások, `FINDING-…`). Ha az még dolgozik, a végrehajtás menjen külön worktree-ben (lásd a „Fontos tudnivalók” szakaszt), hogy a két munka ne keveredjen a munkafában, és a tesztek eredménye ne függjön a másik félkész változásaitól.
 
 - [ ] **Step 3: Alapállapot**
 

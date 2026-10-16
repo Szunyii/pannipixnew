@@ -54,7 +54,8 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-hairline bg-paper/85 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+      {/* Opaque: a see-through paper turns muddy grey over the ink contact section and footer. */}
+      <header className="sticky top-0 z-50 border-b border-hairline bg-paper pt-[env(safe-area-inset-top)]">
         {/*
           Three columns so the centre item sits exactly on the page axis: the wordmark on phones, the nav
           from lg. In between there's no room for both beside a centred nav, so the nav sits on the right.
@@ -100,7 +101,7 @@ export function Header() {
         </div>
       </header>
 
-      {/* Phones only. Outside the header: its backdrop-filter would otherwise trap position:fixed. */}
+      {/* Phones only. Outside the header, so a filter or transform on it can never trap position:fixed. */}
       <div
         id="site-menu"
         hidden={!open}

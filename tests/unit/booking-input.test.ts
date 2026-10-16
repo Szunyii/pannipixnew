@@ -1,6 +1,18 @@
 import { email as payloadEmail } from "payload/shared";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PLACEMENTS, parseBookingInput, placementLabel } from "@/lib/booking-input";
+
+// Both settings of the switch are pinned here, so the tests hold whichever way lib/features.ts has it.
+const features = vi.hoisted(() => ({ slotPicking: true }));
+vi.mock("@/lib/features", () => ({
+  get SLOT_PICKING() {
+    return features.slotPicking;
+  },
+}));
+
+beforeEach(() => {
+  features.slotPicking = true;
+});
 
 const valid = {
   designId: "12",
@@ -111,6 +123,30 @@ describe("parseBookingInput", () => {
     const typed = `${"x".repeat(990)}${"\n".repeat(5)}${"y".repeat(5)}`; // exactly 1000 characters in the browser
     const result = parseBookingInput({ ...valid, note: typed.replaceAll("\n", "\r\n") });
     expect(result.ok && result.data.note).toBe(typed);
+  });
+});
+
+describe("parseBookingInput while visitors don't pick a slot", () => {
+  beforeEach(() => {
+    features.slotPicking = false;
+  });
+
+  it("accepts a form without a slot", () => {
+    const result = parseBookingInput({ ...valid, slotId: undefined });
+    expect(result.ok && result.data).toMatchObject({ designId: 12, slotId: null, name: "Kovács Anna" });
+  });
+
+  it("does not list the slot among the missing fields", () => {
+    const result = parseBookingInput({});
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(Object.keys(result.fieldErrors).sort()).toEqual(["adult", "designId", "email", "name", "phone", "placement"]);
+  });
+
+  // The endpoint takes any field, whatever the form shows: a posted slot must not be held while the picker is off.
+  it.each(["4", "0", "abc"])("ignores a posted slot id (%j)", (slotId) => {
+    const result = parseBookingInput({ ...valid, slotId });
+    expect(result.ok && result.data.slotId).toBeNull();
   });
 });
 

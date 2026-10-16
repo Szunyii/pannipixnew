@@ -1,40 +1,7 @@
 import Image from "next/image";
+import { SLOT_PICKING } from "@/lib/features";
 import { PER_DESIGN } from "./data";
 import { Arrow, Axis, btn, container } from "./ui";
-
-// An undrawn composition: the axis, orbits and sizing marks a custom piece starts from.
-function Construction() {
-  const ticks = Array.from({ length: 15 }, (_, i) => 120 + i * 32);
-  return (
-    <svg viewBox="0 0 438 698" className="absolute inset-0 m-auto h-[88%] w-auto" aria-hidden="true">
-      <g fill="none" stroke="var(--color-ink)" strokeWidth="1.5">
-        <line x1="219" y1="40" x2="219" y2="658" strokeDasharray="2 5" />
-        {ticks.map((y) => (
-          <line key={y} x1="214" y1={y} x2="224" y2={y} opacity="0.5" />
-        ))}
-        <circle cx="219" cy="300" r="112" />
-        <circle cx="219" cy="300" r="68" strokeDasharray="1 4" opacity="0.7" />
-        <circle cx="219" cy="452" r="44" opacity="0.8" />
-        <circle cx="306" cy="190" r="13" />
-        <circle cx="128" cy="410" r="6" />
-        <path d="M107 300h224M219 188v224" opacity="0.35" />
-        <path d="M196 300h46M219 277v46" />
-        {/* sizing bracket */}
-        <path d="M372 188v376M366 188h12M366 564h12" opacity="0.8" />
-      </g>
-      <text
-        x="386"
-        y="380"
-        transform="rotate(90 386 380)"
-        textAnchor="middle"
-        fill="var(--color-muted)"
-        style={{ font: "400 19px var(--font-jost)", letterSpacing: "0.2em" }}
-      >
-        15–18 CM
-      </text>
-    </svg>
-  );
-}
 
 const customService = {
   id: "egyedi",
@@ -47,7 +14,16 @@ const customService = {
     ["Ár", "Egyedi ajánlat a konzultáció után"],
   ],
   cta: { href: "#kapcsolat", label: "Egyedi tervet kérek", style: btn.primary },
-  visual: <Construction />,
+  visual: (
+    <Image
+      src="/studio/drawing-ipad.webp"
+      alt="Panni iPaden rajzol egy mintát: egy öltönyös férfi a Szaturnusz gyűrűjén ül, geometrikus formák és apró alakok között"
+      fill
+      quality={90}
+      sizes="(min-width: 1024px) 40vw, 90vw"
+      className="object-cover"
+    />
+  ),
 };
 
 function flashService(price: string | null, rule: string) {
@@ -55,7 +31,9 @@ function flashService(price: string | null, rule: string) {
     id: "flash-minta",
     label: "Flash minták",
     title: "Válassz egy kész mintát.",
-    body: "Előre megrajzolt darabok a PANNIPIX kollekciókból, fix áron. Kiválasztod a mintát és egy szabad időpontot, én pedig visszaigazolom a foglalást.",
+    body: SLOT_PICKING
+      ? "Előre megrajzolt darabok a PANNIPIX kollekciókból, fix áron. Kiválasztod a mintát és egy szabad időpontot, én pedig visszaigazolom a foglalást."
+      : "Előre megrajzolt darabok a PANNIPIX kollekciókból, fix áron. Kiválasztod és lefoglalod a mintát, én pedig visszaigazolom, és egyeztetjük az időpontot.",
     facts: [
       ["Ár", price ?? PER_DESIGN],
       ["Méret", PER_DESIGN],
@@ -75,7 +53,7 @@ function flashService(price: string | null, rule: string) {
   };
 }
 
-/** `flashRule` is the "Alkalmak" fact: the booking rule the collections share, or that it varies. */
+/** `flashRule` is the "Alkalmak" fact: the booking rule the designs share, or that each states its own. */
 export function Paths({ flashPrice, flashRule }: { flashPrice: string | null; flashRule: string }) {
   const services = [customService, flashService(flashPrice, flashRule)];
   return (

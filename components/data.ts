@@ -1,16 +1,21 @@
 import type { Availability, BookingRule } from "@/lib/booking-rules";
-import { designName } from "@/lib/design-name";
+import { designName, designPath } from "@/lib/design-name";
 import { formatPrice } from "@/lib/format";
-import type { FlashCategory, FlashDesign } from "@/lib/flash-types";
+import type { FlashDesign } from "@/lib/flash-types";
 
-export { designName, formatPrice };
+export { designName, designPath, formatPrice };
 export type { BookingRule };
-export type { DesignImage, FlashCategory, FlashDesign } from "@/lib/flash-types";
+export type { DesignImage, FlashDesign } from "@/lib/flash-types";
 
 export const styles = ["Conceptual", "Abstract", "Microrealism"] as const;
 
 /** What the services overview shows for a fact each design states itself, or when there is nothing to go by yet. */
 export const PER_DESIGN = "Mintánként megadva";
+
+/** The order a collection's row shows its designs in: as given (newest first), with the sold-out ones at the end. */
+export function rowOrder(designs: FlashDesign[]) {
+  return [...designs].sort((a, b) => Number(a.availability.soldOut) - Number(b.availability.soldOut));
+}
 
 /** One line on how often a design can still be booked. */
 export function availabilityLabel({ rule, remaining, soldOut }: Availability) {
@@ -30,24 +35,17 @@ export function priceRange(designs: FlashDesign[]) {
 }
 
 type Designs = readonly Pick<FlashDesign, "availability">[];
-type Categories = readonly Pick<FlashCategory, "rule">[];
 
-/**
- * The rule every design on the site books by; null when they differ or there are none. It goes by the designs shown:
- * a collection with no visible design (empty, or all switched off) would otherwise make the rules look mixed. Only
- * while no design is shown do the collections stand in.
- */
-export function sharedRule(designs: Designs, categories: Categories): BookingRule | null {
-  const rules = designs.length > 0 ? designs.map((d) => d.availability.rule) : categories.map((c) => c.rule);
-  const rule = rules[0];
-  return rule && rules.every((r) => r === rule) ? rule : null;
+/** The rule every design shown on the site books by; null when they differ or there are none. */
+export function sharedRule(designs: Designs): BookingRule | null {
+  const rule = designs[0]?.availability.rule;
+  return rule && designs.every((d) => d.availability.rule === rule) ? rule : null;
 }
 
 const ruleNames: Record<BookingRule, string> = { single: "Egyszeri", limited: "Limitált", unlimited: "Korlátlan" };
 
 /** How often a flash design can be booked, in a word or two for the services overview. */
-export function ruleSummary(designs: Designs, categories: Categories) {
-  if (designs.length === 0 && categories.length === 0) return PER_DESIGN;
-  const rule = sharedRule(designs, categories);
-  return rule ? ruleNames[rule] : "Kollekciónként eltérő";
+export function ruleSummary(designs: Designs) {
+  const rule = sharedRule(designs);
+  return rule ? ruleNames[rule] : PER_DESIGN;
 }

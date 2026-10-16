@@ -31,12 +31,6 @@ function refuseWhileReferenced(collection: CollectionSlug, field: string, messag
   };
 }
 
-export const guardCategoryDelete = refuseWhileReferenced(
-  "designs",
-  "category",
-  "A kollekció nem törölhető, amíg minta tartozik hozzá. Előbb helyezd át vagy töröld a mintáit.",
-);
-
 export const guardDesignDelete = refuseWhileReferenced(
   "bookings",
   "design",

@@ -396,9 +396,9 @@
           "notNull": false,
           "autoincrement": false
         },
-        "category_id": {
-          "name": "category_id",
-          "type": "integer",
+        "category": {
+          "name": "category",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -408,6 +408,21 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "rule": {
+          "name": "rule",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'single'"
+        },
+        "limit": {
+          "name": "limit",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "price": {
@@ -471,13 +486,6 @@
         }
       },
       "indexes": {
-        "designs_category_idx": {
-          "name": "designs_category_idx",
-          "columns": [
-            "category_id"
-          ],
-          "isUnique": false
-        },
         "designs_updated_at_idx": {
           "name": "designs_updated_at_idx",
           "columns": [
@@ -495,109 +503,10 @@
         "category_number_idx": {
           "name": "category_number_idx",
           "columns": [
-            "category_id",
+            "category",
             "number"
           ],
           "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "designs_category_id_categories_id_fk": {
-          "name": "designs_category_id_categories_id_fk",
-          "tableFrom": "designs",
-          "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "categories": {
-      "name": "categories",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "rule": {
-          "name": "rule",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'single'"
-        },
-        "limit": {
-          "name": "limit",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "order": {
-          "name": "order",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false,
-          "default": 0
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
-        }
-      },
-      "indexes": {
-        "categories_name_idx": {
-          "name": "categories_name_idx",
-          "columns": [
-            "name"
-          ],
-          "isUnique": true
-        },
-        "categories_updated_at_idx": {
-          "name": "categories_updated_at_idx",
-          "columns": [
-            "updated_at"
-          ],
-          "isUnique": false
-        },
-        "categories_created_at_idx": {
-          "name": "categories_created_at_idx",
-          "columns": [
-            "created_at"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {},
@@ -1118,13 +1027,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "categories_id": {
-          "name": "categories_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "media_id": {
           "name": "media_id",
           "type": "integer",
@@ -1180,13 +1082,6 @@
           "name": "payload_locked_documents_rels_designs_id_idx",
           "columns": [
             "designs_id"
-          ],
-          "isUnique": false
-        },
-        "payload_locked_documents_rels_categories_id_idx": {
-          "name": "payload_locked_documents_rels_categories_id_idx",
-          "columns": [
-            "categories_id"
           ],
           "isUnique": false
         },
@@ -1251,19 +1146,6 @@
           "tableTo": "designs",
           "columnsFrom": [
             "designs_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "payload_locked_documents_rels_categories_fk": {
-          "name": "payload_locked_documents_rels_categories_fk",
-          "tableFrom": "payload_locked_documents_rels",
-          "tableTo": "categories",
-          "columnsFrom": [
-            "categories_id"
           ],
           "columnsTo": [
             "id"
@@ -1544,6 +1426,6 @@
   "internal": {
     "indexes": {}
   },
-  "id": "68a214a8-3178-4347-b915-b855af45f102",
+  "id": "0919a607-0e12-48e0-962a-917ca26fc080",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }

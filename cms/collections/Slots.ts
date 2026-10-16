@@ -1,4 +1,5 @@
 import type { CollectionBeforeChangeHook, CollectionConfig, FieldHook } from "payload";
+import { SLOT_PICKING } from "@/lib/features";
 import { TIME_ZONE, formatSlotTitle } from "@/lib/time";
 import type { Slot } from "@/payload-types";
 import { isAdmin } from "../access";
@@ -31,7 +32,9 @@ export const Slots: CollectionConfig = {
     useAsTitle: "title",
     defaultColumns: ["title", "state"],
     group: "Foglalás",
-    description: "Szabad időpontok, amelyekre az oldalon flash mintát lehet foglalni. Egy időpontra egy foglalás jut.",
+    description: SLOT_PICKING
+      ? "Szabad időpontok, amelyekre az oldalon flash mintát lehet foglalni. Egy időpontra egy foglalás jut."
+      : "Időpontok, amelyeket a foglalásokhoz rendelhetsz, a foglalás Időpont mezőjében. Egy időpontra egy foglalás jut. Az oldalon a vendégek most nem választanak időpontot.",
   },
   defaultSort: "startsAt",
   disableDuplicate: true,

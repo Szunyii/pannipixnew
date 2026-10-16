@@ -1,5 +1,5 @@
-// Fills an empty development database with the placeholder flash collections, designs and open time slots.
-// Development only: it refuses to run in production, and skips a database that already has collections.
+// Fills an empty development database with the placeholder flash designs and open time slots.
+// Development only: it refuses to run in production, and skips a database that already has designs.
 // After a run that stopped partway, start over with a fresh database and media folder (by default .data/).
 import path from "node:path";
 import config from "@payload-config";
@@ -12,17 +12,12 @@ if (isProductionRuntime) throw new Error("The seed only runs on development data
 
 const payload = await getPayload({ config });
 
-if ((await payload.count({ collection: "categories" })).totalDocs > 0) {
+if ((await payload.count({ collection: "designs" })).totalDocs > 0) {
   payload.logger.info(
-    "Seed skipped: the database already has collections. If an earlier run stopped partway, delete the database and the media folder (by default .data/) and run it again.",
+    "Seed skipped: the database already has designs. If an earlier run stopped partway, delete the database and the media folder (by default .data/) and run it again.",
   );
   process.exit(0);
 }
-
-// Placeholder rules. Set the real ones in the admin.
-const pcons = await payload.create({ collection: "categories", data: { name: "P’CONs", rule: "single", order: 1 } });
-await payload.create({ collection: "categories", data: { name: "ORNX", rule: "limited", limit: 3, order: 2 } });
-await payload.create({ collection: "categories", data: { name: "daddywillhateus", rule: "unlimited", order: 3 } });
 
 async function upload(file: string, alt: string) {
   const media = await payload.create({
@@ -43,7 +38,8 @@ type Placeholder = {
   images: { file: string; alt: string; kind: "art" | "photo"; label: string }[];
 };
 
-// Cropped from the reference mockups. Oldest first, so "Legújabb" sorts like the numbers.
+// Cropped from the reference mockups, all in P’CONs and booked once: set the real collection and rule in the admin.
+// Oldest first, so "Legújabb" sorts like the numbers.
 const placeholders: Placeholder[] = [
   {
     number: "020",
@@ -126,7 +122,8 @@ for (const p of placeholders) {
   const design = await payload.create({
     collection: "designs",
     data: {
-      category: pcons.id,
+      category: "pcons",
+      rule: "single",
       number: p.number,
       price: p.price,
       size: p.size,
@@ -177,5 +174,5 @@ await payload.create({
   },
 });
 
-payload.logger.info(`Seed done: 3 collections, ${placeholders.length} designs, ${opened} open slots.`);
+payload.logger.info(`Seed done: ${placeholders.length} designs, ${opened} open slots.`);
 process.exit(0);

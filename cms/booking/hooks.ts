@@ -7,7 +7,9 @@ import {
   nextSeat,
   relationId,
 } from "@/lib/booking-rules";
+import { categoryName } from "@/lib/categories";
 import { designName } from "@/lib/design-name";
+import { SLOT_PICKING } from "@/lib/features";
 import type { Booking } from "@/payload-types";
 import { BookingError } from "./errors";
 
@@ -16,8 +18,8 @@ type Scope = { data: Draft; isPublic: boolean; excludeId?: number; req: PayloadR
 
 /**
  * Applies the booking rules on every save, from the website and from the admin alike: an active
- * booking holds a free slot and one of its design's seats, and gives both back when it is rejected
- * or cancelled. The unique indexes on `slot` and `design + seat` settle simultaneous requests.
+ * booking holds one of its design's seats and, once it has one, a free slot, and gives both back when
+ * it is rejected or cancelled. The unique indexes on `slot` and `design + seat` settle simultaneous requests.
  */
 export const prepareBooking: CollectionBeforeChangeHook<Booking> = async ({
   data,
@@ -47,8 +49,12 @@ export const prepareBooking: CollectionBeforeChangeHook<Booking> = async ({
     }
 
     const slotId = relationId(data.slot === undefined ? previous?.slot : data.slot);
-    if (slotId === null) throw new BookingError("slot_required", req.t);
-    if (!previous || relationId(previous.slot) !== slotId) {
+    if (slotId === null) {
+      // The website asks for a slot only while visitors pick one; the admin may always leave it for later.
+      if (isPublic && SLOT_PICKING) throw new BookingError("slot_required", req.t);
+      // No slot (any more), so no time either: the copy must not outlive a slot the admin took away.
+      data.slotStartsAt = null;
+    } else if (!previous || relationId(previous.slot) !== slotId) {
       await takeSlot(slotId, { data, isPublic, excludeId: previous?.id, req });
     }
   }
@@ -62,19 +68,15 @@ async function takeSeat(designId: number, { data, isPublic, excludeId, req }: Sc
   const design = await req.payload.findByID({
     collection: "designs",
     id: designId,
-    select: { category: true, number: true, price: true, visible: true },
-    depth: 1,
+    select: { category: true, number: true, price: true, visible: true, rule: true, limit: true },
+    depth: 0,
     disableErrors: true,
     overrideAccess: true,
     req,
   });
   if (!design || (isPublic && !design.visible)) throw new BookingError("design_unavailable", req.t);
-  const category =
-    typeof design.category === "object"
-      ? design.category
-      : await req.payload.findByID({ collection: "categories", id: design.category, overrideAccess: true, req });
 
-  const limit = effectiveLimit(category);
+  const limit = effectiveLimit(design);
   if (limit === null) {
     data.seat = null;
   } else {
@@ -96,7 +98,7 @@ async function takeSeat(designId: number, { data, isPublic, excludeId, req }: Sc
     if (seat === null) throw new BookingError("sold_out", req.t);
     data.seat = seat;
   }
-  data.designName = designName({ collection: category.name, number: design.number });
+  data.designName = designName({ collection: categoryName(design.category), number: design.number });
   data.price = design.price;
 }
 

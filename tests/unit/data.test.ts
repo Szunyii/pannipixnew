@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { type FlashDesign, availabilityLabel, priceRange, ruleSummary, sharedRule } from "@/components/data";
+import { type FlashDesign, availabilityLabel, priceRange, rowOrder, ruleSummary, sharedRule } from "@/components/data";
 import { type BookingRule, availability } from "@/lib/booking-rules";
 
 let sequence = 0;
 
-/** A design of a single collection at the given price, still bookable unless sold out. */
+/** A design booked once, at the given price, still bookable unless sold out. */
 function design(price: number, { soldOut = false } = {}): FlashDesign {
   sequence += 1;
   return {
     id: sequence,
     number: String(sequence).padStart(3, "0"),
+    category: "pcons",
     collection: "Teszt",
     price,
     size: "",
@@ -51,6 +52,13 @@ describe("priceRange", () => {
   });
 });
 
+describe("rowOrder", () => {
+  it("keeps the order it is given, with the sold-out designs at the end", () => {
+    const [a, b, c] = [design(1), design(2, { soldOut: true }), design(3)];
+    expect(rowOrder([a, b, c]).map((d) => d.price)).toEqual([1, 3, 2]);
+  });
+});
+
 describe("availabilityLabel", () => {
   it("names the rule of a design that can still be booked", () => {
     expect(availabilityLabel(availability({ rule: "single" }, 0))).toBe("Egyszeri minta");
@@ -71,38 +79,25 @@ describe("ruleSummary", () => {
     ["unlimited", "Korlátlan"],
   ] as const)("names the rule when every design shown is %s", (rule, label) => {
     const designs = [designUnder(rule), designUnder(rule)];
-    expect(ruleSummary(designs, [])).toBe(label);
-    expect(sharedRule(designs, [])).toBe(rule);
+    expect(ruleSummary(designs)).toBe(label);
+    expect(sharedRule(designs)).toBe(rule);
   });
 
-  it("says it varies when the designs differ", () => {
+  it("says each design states its own when the designs differ", () => {
     const designs = [designUnder("single"), designUnder("single"), designUnder("unlimited")];
-    expect(ruleSummary(designs, [])).toBe("Kollekciónként eltérő");
-    expect(sharedRule([designUnder("limited"), designUnder("single")], [])).toBeNull();
-  });
-
-  it("goes by the designs shown, not by collections that have none", () => {
-    // Only the single-use collection has a visible design: the unlimited one is empty or all hidden.
-    const categories = [{ rule: "single" }, { rule: "unlimited" }] as const;
-    expect(ruleSummary([designUnder("single")], categories)).toBe("Egyszeri");
-    expect(sharedRule([designUnder("single")], categories)).toBe("single");
+    expect(ruleSummary(designs)).toBe("Mintánként megadva");
+    expect(sharedRule(designs)).toBeNull();
+    expect(sharedRule([designUnder("limited"), designUnder("single")])).toBeNull();
   });
 
   it("counts a sold-out design: it is still shown, under its rule", () => {
     const soldOut = design(90000, { soldOut: true });
-    expect(ruleSummary([soldOut, designUnder("unlimited")], [])).toBe("Kollekciónként eltérő");
-    expect(ruleSummary([soldOut], [{ rule: "unlimited" }])).toBe("Egyszeri");
+    expect(ruleSummary([soldOut, designUnder("unlimited")])).toBe("Mintánként megadva");
+    expect(ruleSummary([soldOut])).toBe("Egyszeri");
   });
 
-  it("falls back to the collections when there are no designs", () => {
-    expect(ruleSummary([], [{ rule: "limited" }, { rule: "limited" }])).toBe("Limitált");
-    expect(sharedRule([], [{ rule: "limited" }, { rule: "limited" }])).toBe("limited");
-    expect(ruleSummary([], [{ rule: "single" }, { rule: "unlimited" }])).toBe("Kollekciónként eltérő");
-    expect(sharedRule([], [{ rule: "limited" }, { rule: "single" }])).toBeNull();
-  });
-
-  it("shows the other facts' placeholder when there are neither designs nor collections", () => {
-    expect(ruleSummary([], [])).toBe("Mintánként megadva");
-    expect(sharedRule([], [])).toBeNull();
+  it("shows the other facts' placeholder when there are no designs", () => {
+    expect(ruleSummary([])).toBe("Mintánként megadva");
+    expect(sharedRule([])).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import config from "@payload-config";
 import { getPayload, type Payload } from "payload";
 import type { BookingInput } from "@/lib/booking-input";
 import type { BookingRule } from "@/lib/booking-rules";
+import type { CategorySlug } from "@/lib/categories";
 import type { Booking } from "@/payload-types";
 
 export function getTestPayload(): Promise<Payload> {
@@ -16,16 +17,11 @@ let imageId: number | undefined;
 
 /** Clears everything but images and admins, in the order the delete guards allow. */
 export async function resetDatabase(payload: Payload) {
-  for (const collection of ["bookings", "slots", "designs", "categories"] as const) {
+  for (const collection of ["bookings", "slots", "designs"] as const) {
     // A bulk delete reports the documents it couldn't delete instead of throwing.
     const { errors } = await payload.delete({ collection, where: { id: { exists: true } }, overrideAccess: true });
     if (errors.length > 0) throw new Error(`Could not clear ${collection}: ${errors.map((e) => e.message).join("; ")}`);
   }
-}
-
-export async function createCategory(payload: Payload, rule: BookingRule, limit?: number) {
-  sequence += 1;
-  return payload.create({ collection: "categories", data: { name: `Teszt ${sequence}`, rule, limit, order: sequence } });
 }
 
 /** Uploads the fixture image as a new media document. */
@@ -43,16 +39,26 @@ async function testImage(payload: Payload) {
   return imageId;
 }
 
+/** A design that is booked once, in P’CONs, unless the test says otherwise. */
 export async function createDesign(
   payload: Payload,
-  categoryId: number,
-  data: { visible?: boolean; price?: number; number?: string; image?: number } = {},
+  data: {
+    category?: CategorySlug;
+    rule?: BookingRule;
+    limit?: number;
+    visible?: boolean;
+    price?: number;
+    number?: string;
+    image?: number;
+  } = {},
 ) {
   sequence += 1;
   return payload.create({
     collection: "designs",
     data: {
-      category: categoryId,
+      category: data.category ?? "pcons",
+      rule: data.rule ?? "single",
+      limit: data.limit,
       number: data.number ?? String(sequence).padStart(3, "0"),
       price: data.price ?? 90000,
       visible: data.visible ?? true,
@@ -87,8 +93,8 @@ export async function createBooking(
   return payload.create({ collection: "bookings", data: { ...customer, design, slot, status: data.status ?? "pending" } });
 }
 
-/** What the website form sends for a design and a slot. */
-export function publicInput(designId: number, slotId: number): BookingInput {
+/** What the website form sends for a design, with the slot the visitor picked or without one. */
+export function publicInput(designId: number, slotId: number | null = null): BookingInput {
   const { name, email, phone, placement } = customer;
   return { designId, slotId, name, email, phone, placement, note: "", website: "" };
 }

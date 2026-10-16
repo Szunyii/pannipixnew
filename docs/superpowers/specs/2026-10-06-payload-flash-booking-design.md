@@ -3,6 +3,10 @@
 **Dátum:** 2026-10-06 · **Állapot:** jóváhagyásra vár · **Ág:** `feature/payload-flash-booking`
 **Kiinduló állapot:** Next 16.3.8, React 19.2.8, Tailwind 4, egyoldalas landing, magyar szövegek, Hostinger (managed Node.js).
 
+> **Módosítva 2026-10-12:** az oldalon az időpontválasztó ki van kapcsolva, a látogató csak a mintát foglalja le, az időpontot az admin rendeli hozzá. Az eltéréseket a 16. szakasz írja le; a többi szakasz a bekapcsolt választót mutatja.
+>
+> **Módosítva 2026-10-12 (2.):** a kollekció a mintán választható legördülő listából, és a foglalhatóság is a minta mezője, nem a kollekcióé. Az eltéréseket a 17. szakasz írja le; a többi szakasz a kollekciónkénti szabályt mutatja.
+
 ## 1. Cél
 
 A flash minták ma be vannak égetve a kódba (`components/data.ts`), és a felület vásárlást sugall (kosár, „Megvásárlod a mintát”). A cél:
@@ -318,3 +322,84 @@ TRUSTED_PROXY_HOPS=1
 - A gyűjtemény szintű `indexes: [{ fields, unique }]` (összetett index) támogatott.
 - Az SQLite `UNIQUE constraint failed` hibából Payload `ValidationError` lesz (`handleUpsertError`), a hibás mező útvonalával.
 - A date mezőnek van `timezone` opciója, és a `virtual` mezők is elérhetők. A magyar admin fordítás: `@payloadcms/translations/languages/hu`.
+
+## 16. Módosítás (2026-10-12): az időpontválasztó ki van kapcsolva
+
+Egyelőre a látogató csak a mintát foglalja le, időpontot nem választ; az időpontot az admin rendeli a foglaláshoz. Az időpontválasztó kódja megmaradt: a `lib/features.ts` `SLOT_PICKING` konstansa kapcsolja, az értéke most `false`. A fenti szakaszok a bekapcsolt (`true`) állapotot írják le.
+
+### 16.1 Ami a kapcsolótól függ (kikapcsolva)
+
+- **Foglalási ablak (9.3):** egyetlen lépés (*Adataid*); nincs időpontlépés, és az ablak nem kér le időpontokat. A fejléc felirata „Foglalás”. Siker után: „Hamarosan átnézem, és e-mailben visszaigazolom; az időpontot utána egyeztetjük.”
+- **Bemenet-ellenőrzés (8.):** a `slotId` nem kötelező. Ha valaki mégis elküldi, a szerver figyelmen kívül hagyja, és a foglalás időpont nélkül jön létre.
+- **Az oldal szövegei (9.2, 9.4):** „időpontfoglalás” helyett „foglalás”. Érintett: a kártya gombja („{név} – foglalás”), a Kiemelt rész gombja („Lefoglalom”) és „Hogyan működik?” blokkja, a Folyamat (Választás → Foglalás → Visszaigazolás → Tetoválás), a Szolgáltatások flash leírása, a Kapcsolat bevezetője és az oldal meta leírása. A `PAYMENT_NOTE` nem változik.
+- **Admin leírások:** a *Foglalások* és az *Időpontok* gyűjtemény leírása elmondja, hogy az időpontot az admin adja meg.
+- **E-mailek (7.):** elutasításnál és lemondásnál a mintákhoz visszavezető mondat és a link felirata („Flash minták”) nem ígér szabad időpontokat.
+
+### 16.2 Ami mindkét állapotban érvényes
+
+- **Az időpont nem kötelező az aktív foglaláson (6.1, 6.3, 6.5).** A foglalás időpont nélkül is leköti a minta egy alkalmát. Az admin a foglalás *Időpont* mezőjében bármikor megadhat, cserélhet vagy törölhet időpontot; a `slot` egyedi indexe és a „csak szabad időpont” szabály változatlan. Ha az időpont lekerül egy aktív foglalásról, a `slotStartsAt` pillanatkép is törlődik (felszabadításkor továbbra is megmarad). Időpontot csak a nyilvános foglalás követel meg, és csak bekapcsolt választó mellett („Válassz időpontot.”).
+- **E-mailek (7.):** az időpont csak akkor szerepel a levél soraiban és tárgyában, ha a foglalásnak már van.
+  - „Megkaptam” levél időpont nélkül: jelzi, hogy az időpontot a visszaigazolás után egyeztetjük.
+  - Visszaigazolás időpont nélkül: a tárgya „Visszaigazolva: {minta}”, és azt írja, hogy az időpontot és a részleteket válaszlevélben egyeztetjük.
+  - Az adminnak szóló levél időpont nélkül: a foglalás „jóváhagyásra és időpontra vár”.
+  - Időpont megadásáról vagy cseréjéről továbbra sem megy külön levél. A visszaigazolásba akkor kerül be az időpont, ha az admin a jóváhagyással egy mentésben adja meg.
+- **Séma:** nem változik, migráció nem kell (a `slot` oszlop eddig is lehetett üres).
+
+### 16.3 Visszakapcsolás
+
+A `SLOT_PICKING` értékét `true`-ra kell állítani, majd futtatni az `npm run generate:types` parancsot (az admin leírások a `payload-types.ts` megjegyzéseibe is bekerülnek). A tesztek mindkét állapotot rögzítik, mert a kapcsolót maguk állítják, így az átállítás nem töri el őket. A kikapcsolt időszakban időpont nélkül létrejött foglalások ezután is menthetők, mert az admin oldalon az időpont nem kötelező.
+
+### 16.4 Tesztelés
+
+A 12. szakasz listája kiegészül:
+
+- Nyilvános foglalás időpont nélkül; egyszeri mintára két egyidejű kérésből pontosan egy sikerül.
+- Bekapcsolt választó mellett a nyilvános foglalás időpont nélkül elutasítva, az adminé nem.
+- Admin foglalás időpont nélkül; időpont utólagos megadása és elvétele (az elvett időpont újra kiadható).
+- Levelek időponttal és anélkül; elutasítás és lemondás szövege mindkét kapcsolóállásban.
+- Bemenet-ellenőrzés mindkét kapcsolóállásban.
+
+## 17. Módosítás (2026-10-12): a kollekció és a foglalhatóság a mintán van
+
+A kollekció már nem külön gyűjtemény: a minta legördülő listából választja ki, és azt is a minta adja meg, hányszor foglalható. A fenti szakaszok a kollekciónkénti szabályt írják le; ahol ez a szakasz mást mond, ez érvényes.
+
+### 17.1 Adatmodell (4.1, 4.2)
+
+- A `categories` gyűjtemény megszűnt, az adminban nincs *Kollekciók* menüpont.
+- A kollekciók listája a kódban van: `lib/categories.ts`, `CATEGORIES` (`pcons` → P’CONs, `ornx` → ORNX, `daddywillhateus` → daddywillhateus). A lista sorrendje az oldal szűrőjének sorrendje. Új kollekció egy új sor; migráció nem kell hozzá, mert az oszlop sima szöveg.
+- `designs.category`: `select`, kötelező, a lista értékeivel (korábban kapcsolat a `categories` gyűjteményre). A `(category, number)` egyedi index megmaradt.
+- `designs.rule` (`single` | `limited` | `unlimited`, alapértelmezés: `single`) és `designs.limit` (csak `limited` mellett, legalább 2; más szabálynál mentéskor törlődik). A két mező a kollekcióról került át, a jelentésük nem változott. Az admin listában a *Foglalhatóság* oszlop is látszik.
+- A minta `title` mezője a kollekció feliratából és a sorszámból áll („P’CONs #027”). Ha egy felirat megváltozik a listában, az érintett mintákat újra kell menteni; a kollekció átnevezését követő automatikus újramentés megszűnt.
+
+### 17.2 Foglalási szabályok (6.2–6.6)
+
+- A foglalhatóságot a minta `rule` és `limit` mezője adja. A 6.2–6.5 logikája egyébként nem változott: a helyek kiosztása, az egyedi indexek, a csökkentett limit és a korábban korlátlan minta kezelése ugyanaz, csak a szabály forrása a minta.
+- Egy kollekción belül a minták foglalhatósága eltérhet.
+- A kollekció törlési szabálya (6.6) megszűnt; a mintáé, az időponté és a képé változatlan.
+
+### 17.3 Weboldal (9.1, 9.4)
+
+- `getFlashCatalog()` csak a mintákat adja vissza; a kollekciók a `CATEGORIES` listából jönnek.
+- A szűrő a lista minden kollekcióját mutatja, akkor is, ha valamelyikben nincs látható minta.
+- A Szolgáltatások „Alkalmak” sora: ha minden látható minta foglalhatósága azonos, annak a neve (Egyszeri, Limitált, Korlátlan); különben, és amíg nincs látható minta, „Mintánként megadva”.
+- Szövegek: a flash rész bevezetője vegyes foglalhatóságnál „…ezt minden mintánál jelzem.”; a GYIK válasza „Ez mintánként változik, mindegyiknél jelzem.” kezdetű.
+
+### 17.4 Seed és migráció (10., 11.)
+
+- A seed nem hoz létre kollekciókat. A helyőrző minták mind P’CONs, egyszeri foglalhatósággal. A seed akkor marad ki, ha az adatbázisban már van minta.
+- Éles adatbázis a módosításkor még nem volt, ezért nincs átalakító migráció: az induló migráció újra lett generálva (`20261012_105725_initial`). A `down` törlési sorrendje (előbb a gyerek táblák) ugyanúgy kézzel van igazítva, mint az előzőben.
+- Egy korábbi sémával létrejött fejlesztői adatbázison a dev szerver séma-szinkronja nem megy végig magától: kérdést tesz fel a terminálban (elsőként azt, hogy a `designs` tábla `category` oszlopa új-e vagy átnevezés), és addig az oldal nem tölt be. Ilyen adatbázisnál a legegyszerűbb az újrakezdés (`rm -rf .data && npm run seed`).
+
+### 17.5 Tesztelés
+
+A 12. szakasz listája így módosul:
+
+- A minta kollekciója csak a lista egyik értéke lehet; a név a feliratból áll össze, és a minta áthelyezésekor frissül.
+- Limitált mintánál legalább 2 alkalom kell; nem limitált mintáról a limit mentéskor törlődik; a foglalhatóság alapértéke egyszeri.
+- Egy kollekción belül minden minta a saját szabálya szerint foglalható, és az oldal is eszerint mutatja.
+- A minta limitjének csökkentése és a korlátlanról limitáltra váltás (korábban a kollekción).
+- A kollekció gyűjteményre vonatkozó tesztek (átnevezés, sorrend, törlés, olvasási jog) megszűntek.
+
+## 18. Módosítás (2026-10-12): a minta saját oldalon
+
+A „Kiemelt” (`#kiemelt`) rész lekerült a főoldalról: minden látható minta saját oldalt kap, `/flash/<kollekció értéke>/<sorszám>` címen (pl. `/flash/pcons/028`). A kártya képe és a „Részletek” gombja ide vezet. Az oldal a 9.1 szerinti katalógusból dolgozik (egy kérésen belül egyszer olvasva), kérésenként renderelődik, és 404-et ad, ha a minta nem látható vagy nincs. Tetején „Flash minták” link a főoldal flash részére, jobbra „Előző | Következő” a kollekció sorának sorrendjében (legújabb elöl, az elkeltek a végén). A fejléc, a lábléc, a kedvencek és a foglalási ablak a layoutban van, így a minta oldalán is működnek; a fejléc és a lábléc horgonyai `/#…` alakúak. A főoldal `<main>` eleme is a layoutban van.

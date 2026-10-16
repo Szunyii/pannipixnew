@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Fragment } from "react";
 import { preload } from "react-dom";
 import { styles } from "./data";
@@ -28,16 +29,16 @@ const logoSrc = "/brand/pannipix-logo.png";
 const logoMask = `url(${logoSrc}) left center / contain no-repeat`;
 
 /** The PANNIPIX wordmark, applied as a mask so it takes the surrounding text colour (ink or paper). */
-export function Logo({ className = "h-6 sm:h-7" }: { className?: string }) {
+export function Logo({ className = "h-8 sm:h-10" }: { className?: string }) {
   preload(logoSrc, { as: "image" });
   return (
-    <a href="#top" aria-label="PANNIPIX – vissza az oldal tetejére" className="block w-fit shrink-0 py-2.5">
+    <Link href="/#top" aria-label="PANNIPIX – vissza az oldal tetejére" className="block w-fit shrink-0 py-2.5">
       <span
         aria-hidden="true"
-        className={`block aspect-1277/181 bg-current ${className}`}
+        className={`block aspect-1486/299 bg-current ${className}`}
         style={{ mask: logoMask, WebkitMask: logoMask }}
       />
-    </a>
+    </Link>
   );
 }
 

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useRef, useState, useTransition } from "
 import { type BookFlashState, bookFlash, getOpenSlots } from "@/app/(frontend)/actions";
 import { PLACEMENTS } from "@/lib/booking-input";
 import { PAYMENT_NOTE } from "@/lib/copy";
+import { SLOT_PICKING } from "@/lib/features";
 import type { OpenSlot, SlotDay } from "@/lib/time";
 import { type FlashDesign, availabilityLabel, designName, formatPrice } from "./data";
 import { Check, ChevronDown, ChevronLeft, Close } from "./icons";
@@ -14,6 +15,8 @@ import { Arrow, btn } from "./ui";
 
 // "unavailable": the design sold out or was taken down while the dialog was open, so the booking can't go on.
 type Step = "slot" | "details" | "done" | "unavailable";
+// While visitors don't pick a slot (SLOT_PICKING), the dialog opens on the form and never shows the "slot" step.
+const FIRST_STEP: Step = SLOT_PICKING ? "slot" : "details";
 // "outdated": the site was redeployed while the page was open, so its server actions no longer exist.
 type ErrorCode = Extract<BookFlashState, { status: "error" }>["code"] | "outdated";
 type Result = BookFlashState | { status: "error"; code: "outdated" };
@@ -66,7 +69,7 @@ function TextField({
 }
 
 function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleId: string; onClose: () => void }) {
-  const [step, setStep] = useState<Step>("slot");
+  const [step, setStep] = useState<Step>(FIRST_STEP);
   const [days, setDays] = useState<SlotDay[] | null>(null);
   const [loadError, setLoadError] = useState<"failed" | "outdated" | null>(null);
   const [slot, setSlot] = useState<OpenSlot | null>(null);
@@ -87,7 +90,7 @@ function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleI
   const unavailableHeading = useRef<HTMLHeadingElement>(null);
   // The step whose heading has focus. The first step opens with focus where the dialog put it; tracking the step
   // (not a "mounted" flag) also keeps Strict Mode's second effect run from moving it.
-  const focusedStep = useRef<Step>("slot");
+  const focusedStep = useRef<Step>(FIRST_STEP);
   const form = useRef<HTMLFormElement>(null);
 
   const loadSlots = useCallback(() => {
@@ -100,7 +103,9 @@ function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleI
     );
   }, []);
 
-  useEffect(loadSlots, [loadSlots]);
+  useEffect(() => {
+    if (SLOT_PICKING) loadSlots();
+  }, [loadSlots]);
 
   // Move focus to the new step's heading, so keyboard and screen reader users follow along.
   useEffect(() => {
@@ -185,7 +190,7 @@ function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleI
             <Image src={image.src} alt="" fill sizes="56px" quality={90} className="object-contain mix-blend-multiply" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="label text-[0.6875rem] text-muted">Időpontfoglalás</p>
+            <p className="label text-[0.6875rem] text-muted">{SLOT_PICKING ? "Időpontfoglalás" : "Foglalás"}</p>
             <h2 id={titleId} className="mt-2 font-display text-[1.75rem] leading-tight">
               {name}
             </h2>
@@ -222,10 +227,13 @@ function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleI
               Megkaptam a foglalásod.
             </h3>
             <p id={`${doneId}-booking`} className="mt-4 font-display text-[1.1875rem]">
-              {name} · {slot?.label}
+              {SLOT_PICKING ? `${name} · ${slot?.label}` : name}
             </p>
             <p id={`${doneId}-next`} className="mt-4 max-w-[28rem] leading-[1.7] text-graphite">
-              Hamarosan átnézem, és e-mailben visszaigazolom. Ha nem találod a levelet, nézd meg a spam mappát is.
+              {SLOT_PICKING
+                ? "Hamarosan átnézem, és e-mailben visszaigazolom."
+                : "Hamarosan átnézem, és e-mailben visszaigazolom; az időpontot utána egyeztetjük."}{" "}
+              Ha nem találod a levelet, nézd meg a spam mappát is.
             </p>
             <button type="button" onClick={onClose} className={`${btn.primary} mt-9`}>
               Rendben
@@ -250,85 +258,87 @@ function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleI
           </section>
         ) : (
           <>
-            <section hidden={step !== "slot"} aria-labelledby={slotStepId}>
-              <h3
-                id={slotStepId}
-                ref={slotHeading}
-                tabIndex={-1}
-                className="label text-muted focus:outline-none"
-              >
-                1 · Válassz időpontot
-              </h3>
-              {notice && (
-                <p role="alert" className="mt-5 border-l border-ink pl-4 text-[0.9375rem] leading-relaxed">
-                  {notice}
-                </p>
-              )}
-
-              {loadError === "outdated" ? (
-                <div className="mt-6">
-                  <p className="leading-relaxed text-graphite">{ERROR_TEXT.outdated}</p>
-                  <button type="button" onClick={() => window.location.reload()} className={`${btn.outline} mt-5`}>
-                    Újratöltés
-                  </button>
-                </div>
-              ) : loadError === "failed" ? (
-                <div className="mt-6">
-                  <p className="leading-relaxed text-graphite">Nem sikerült betölteni az időpontokat.</p>
-                  <button type="button" onClick={retry} className={`${btn.outline} mt-5`}>
-                    Újrapróbálom
-                  </button>
-                </div>
-              ) : days === null ? (
-                <p className="mt-6 text-graphite">
-                  Időpontok betöltése…
-                </p>
-              ) : days.length === 0 ? (
-                <p className="mt-6 max-w-[28rem] leading-[1.7] text-graphite">
-                  Most nincs szabad időpont. Írj Instagramon (
-                  <a href="https://instagram.com/pannipix" className="underline underline-offset-4">
-                    @pannipix
-                  </a>
-                  ), és szólok, ha újakat nyitok.
-                </p>
-              ) : (
-                <div className="mt-6 space-y-7">
-                  {days.map((day) => (
-                    <fieldset key={day.key}>
-                      <legend className="font-display text-[1.25rem]">{day.label}</legend>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {day.slots.map((s) => (
-                          <button
-                            key={s.id}
-                            type="button"
-                            aria-pressed={slot?.id === s.id}
-                            aria-label={s.label}
-                            onClick={() => {
-                              setSlot(s);
-                              setNotice(null);
-                            }}
-                            className="h-11 min-w-[5.5rem] rounded-[6px] bg-stencil px-4 font-display text-[1.0625rem] transition-[background-color,color,scale] duration-300 hover:bg-[#e3e3df] active:scale-[0.97] active:duration-75 aria-pressed:bg-ink aria-pressed:text-paper"
-                          >
-                            {s.time}
-                          </button>
-                        ))}
-                      </div>
-                    </fieldset>
-                  ))}
-                </div>
-              )}
-
-              <div className="mt-10 border-t border-hairline pt-6">
-                <button
-                  type="button"
-                  disabled={!slot}
-                  onClick={() => setStep("details")}
-                  className={`${btn.primary} w-full justify-between disabled:opacity-40 sm:w-auto sm:min-w-[17rem]`}
+            {SLOT_PICKING && (
+              <section hidden={step !== "slot"} aria-labelledby={slotStepId}>
+                <h3
+                  id={slotStepId}
+                  ref={slotHeading}
+                  tabIndex={-1}
+                  className="label text-muted focus:outline-none"
                 >
-                  Tovább <Arrow />
-                </button>
-              </div>
-            </section>
+                  1 · Válassz időpontot
+                </h3>
+                {notice && (
+                  <p role="alert" className="mt-5 border-l border-ink pl-4 text-[0.9375rem] leading-relaxed">
+                    {notice}
+                  </p>
+                )}
+
+                {loadError === "outdated" ? (
+                  <div className="mt-6">
+                    <p className="leading-relaxed text-graphite">{ERROR_TEXT.outdated}</p>
+                    <button type="button" onClick={() => window.location.reload()} className={`${btn.outline} mt-5`}>
+                      Újratöltés
+                    </button>
+                  </div>
+                ) : loadError === "failed" ? (
+                  <div className="mt-6">
+                    <p className="leading-relaxed text-graphite">Nem sikerült betölteni az időpontokat.</p>
+                    <button type="button" onClick={retry} className={`${btn.outline} mt-5`}>
+                      Újrapróbálom
+                    </button>
+                  </div>
+                ) : days === null ? (
+                  <p className="mt-6 text-graphite">
+                    Időpontok betöltése…
+                  </p>
+                ) : days.length === 0 ? (
+                  <p className="mt-6 max-w-[28rem] leading-[1.7] text-graphite">
+                    Most nincs szabad időpont. Írj Instagramon (
+                    <a href="https://instagram.com/pannipix" className="underline underline-offset-4">
+                      @pannipix
+                    </a>
+                    ), és szólok, ha újakat nyitok.
+                  </p>
+                ) : (
+                  <div className="mt-6 space-y-7">
+                    {days.map((day) => (
+                      <fieldset key={day.key}>
+                        <legend className="font-display text-[1.25rem]">{day.label}</legend>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {day.slots.map((s) => (
+                            <button
+                              key={s.id}
+                              type="button"
+                              aria-pressed={slot?.id === s.id}
+                              aria-label={s.label}
+                              onClick={() => {
+                                setSlot(s);
+                                setNotice(null);
+                              }}
+                              className="h-11 min-w-[5.5rem] rounded-[6px] bg-stencil px-4 font-display text-[1.0625rem] transition-[background-color,color,scale] duration-300 hover:bg-[#e3e3df] active:scale-[0.97] active:duration-75 aria-pressed:bg-ink aria-pressed:text-paper"
+                            >
+                              {s.time}
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-10 border-t border-hairline pt-6">
+                  <button
+                    type="button"
+                    disabled={!slot}
+                    onClick={() => setStep("details")}
+                    className={`${btn.primary} w-full justify-between disabled:opacity-40 sm:w-auto sm:min-w-[17rem]`}
+                  >
+                    Tovább <Arrow />
+                  </button>
+                </div>
+              </section>
+            )}
 
             {/* Stays mounted while the visitor goes back to change the time, so typed details survive. */}
             <form ref={form} hidden={step !== "details"} onSubmit={submit} aria-labelledby={detailsStepId}>
@@ -339,20 +349,22 @@ function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleI
                   tabIndex={-1}
                   className="label text-muted focus:outline-none"
                 >
-                  2 · Adataid
+                  {SLOT_PICKING ? "2 · Adataid" : "Adataid"}
                 </h3>
-                <button
-                  type="button"
-                  onClick={() => setStep("slot")}
-                  className="label -mr-2 flex min-h-11 items-center gap-1.5 px-2 text-[0.6875rem] transition-opacity hover:opacity-60"
-                >
-                  <ChevronLeft size={15} /> Időpont
-                </button>
+                {SLOT_PICKING && (
+                  <button
+                    type="button"
+                    onClick={() => setStep("slot")}
+                    className="label -mr-2 flex min-h-11 items-center gap-1.5 px-2 text-[0.6875rem] transition-opacity hover:opacity-60"
+                  >
+                    <ChevronLeft size={15} /> Időpont
+                  </button>
+                )}
               </div>
-              <p className="mt-3 font-display text-[1.25rem]">{slot?.label}</p>
+              {SLOT_PICKING && <p className="mt-3 font-display text-[1.25rem]">{slot?.label}</p>}
 
               <input type="hidden" name="designId" value={design.id} />
-              <input type="hidden" name="slotId" value={slot?.id ?? ""} />
+              {SLOT_PICKING && <input type="hidden" name="slotId" value={slot?.id ?? ""} />}
               {/* Honeypot: hidden from people and screen readers, tempting to bots. */}
               <div aria-hidden="true" className="absolute -left-[9999px] size-px overflow-hidden">
                 <label>
@@ -467,7 +479,7 @@ function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleI
                   type="submit"
                   // Not disabled while sending: a focused button that turns disabled drops focus to <body>,
                   // and after a failed send the visitor would have to find their way back into the form.
-                  disabled={!slot}
+                  disabled={SLOT_PICKING && !slot}
                   aria-disabled={pending || undefined}
                   className={`${btn.primary} w-full justify-between disabled:opacity-60 aria-disabled:opacity-60 sm:w-auto sm:min-w-[17rem]`}
                 >

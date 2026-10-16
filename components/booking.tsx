@@ -1,7 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import { useId, useState } from "react";
 import { PLACEMENTS } from "@/lib/booking-input";
+import { SLOT_PICKING } from "@/lib/features";
 import { ChevronDown, Instagram, Mail } from "./icons";
 import { Arrow, btn, container } from "./ui";
 
@@ -42,8 +44,10 @@ export function Booking() {
             Kezdjük a te <em>mintáddal.</em>
           </h2>
           <p className="mt-7 max-w-[25rem] leading-[1.7] text-ash">
-            Írd le, mit szeretnél, és pár napon belül válaszolok. Flash mintára közvetlenül a mintánál tudsz
-            időpontot foglalni.
+            Írd le, mit szeretnél, és pár napon belül válaszolok.{" "}
+            {SLOT_PICKING
+              ? "Flash mintára közvetlenül a mintánál tudsz időpontot foglalni."
+              : "Flash mintát közvetlenül a mintánál tudsz foglalni."}
           </p>
           <ul className="mt-12 space-y-1 border-t border-paper/15 pt-6">
             <li>
@@ -57,6 +61,16 @@ export function Booking() {
               </a>
             </li>
           </ul>
+          <figure className="relative mt-12 aspect-[4/3] overflow-hidden rounded-[3px] bg-paper/10">
+            <Image
+              src="/studio/browsing.webp"
+              alt="Egy vendég a PANNIPIX Instagram-oldalát nézegeti a telefonján"
+              fill
+              quality={90}
+              sizes="(min-width: 1024px) 36vw, 90vw"
+              className="object-cover object-[50%_42%]"
+            />
+          </figure>
         </div>
 
         <form

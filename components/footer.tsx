@@ -1,12 +1,13 @@
+import Link from "next/link";
 import { FooterMark } from "./footer-mark";
 import { container } from "./ui";
 
 const links = [
-  ["#tattoo", "Tattoo"],
-  ["#flash", "Flash"],
-  ["#info", "Info"],
-  ["#rolam", "Rólam"],
-  ["#kapcsolat", "Kapcsolat"],
+  ["/#flash", "Flash"],
+  ["/#tattoo", "Tattoo"],
+  ["/#info", "Info"],
+  ["/#rolam", "Rólam"],
+  ["/#kapcsolat", "Kapcsolat"],
 ];
 
 export function Footer() {
@@ -22,9 +23,9 @@ export function Footer() {
             <ul className="label -my-3 flex flex-wrap gap-x-8 text-[0.6875rem] text-ash">
               {links.map(([href, label]) => (
                 <li key={href}>
-                  <a href={href} className="inline-flex min-h-11 items-center transition-colors hover:text-paper active:text-paper">
+                  <Link href={href} className="inline-flex min-h-11 items-center transition-colors hover:text-paper active:text-paper">
                     {label}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>

@@ -95,7 +95,7 @@ describe("nextSeat", () => {
     expect(nextSeat([1, 3], 2)).toBeNull();
   });
 
-  it("counts bookings without a seat, made while the collection was unlimited", () => {
+  it("counts bookings without a seat, made while the design was unlimited", () => {
     expect(nextSeat([null, null, 1], 3)).toBeNull();
     expect(nextSeat([null, null], 3)).toBe(1);
   });

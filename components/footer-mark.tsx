@@ -76,7 +76,7 @@ export function FooterMark({ className = "" }: { className?: string }) {
     <div
       ref={markRef}
       aria-hidden="true"
-      className={`relative aspect-1277/181 w-full overflow-hidden bg-paper/[0.07] ${className}`}
+      className={`relative aspect-1486/299 w-full overflow-hidden bg-paper/[0.07] ${className}`}
       style={{ mask: markMask, WebkitMask: markMask }}
     >
       <span

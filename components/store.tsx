@@ -5,14 +5,12 @@ import type { FlashDesign } from "./data";
 
 type Store = {
   favorites: Set<number>;
-  featured: number | null;
   /**
    * The design whose booking dialog is open, as it was when the dialog opened. The dialog shows this copy until it
    * closes, so a refresh that changes the design or takes it off the page doesn't change or close it.
    */
   bookingFor: FlashDesign | null;
   toggleFavorite: (id: number) => void;
-  feature: (id: number) => void;
   openBooking: (design: FlashDesign) => void;
   closeBooking: () => void;
 };
@@ -27,25 +25,17 @@ function toggled(set: Set<number>, id: number) {
 }
 
 // Favourites stay UI-only; a booking goes through the booking dialog to Payload.
-export function StoreProvider({
-  initialFeatured,
-  children,
-}: {
-  initialFeatured: number | null;
-  children: React.ReactNode;
-}) {
+export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [favorites, setFavorites] = useState<Set<number>>(() => new Set());
-  const [featured, setFeatured] = useState(initialFeatured);
   const [bookingFor, setBookingFor] = useState<FlashDesign | null>(null);
 
   const toggleFavorite = useCallback((id: number) => setFavorites((s) => toggled(s, id)), []);
-  const feature = useCallback((id: number) => setFeatured(id), []);
   const openBooking = useCallback((design: FlashDesign) => setBookingFor(design), []);
   const closeBooking = useCallback(() => setBookingFor(null), []);
 
   const value = useMemo(
-    () => ({ favorites, featured, bookingFor, toggleFavorite, feature, openBooking, closeBooking }),
-    [favorites, featured, bookingFor, toggleFavorite, feature, openBooking, closeBooking],
+    () => ({ favorites, bookingFor, toggleFavorite, openBooking, closeBooking }),
+    [favorites, bookingFor, toggleFavorite, openBooking, closeBooking],
   );
 
   return <StoreContext value={value}>{children}</StoreContext>;

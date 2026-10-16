@@ -1,5 +1,6 @@
 import { type BookingStatus, isActiveStatus } from "@/lib/booking-rules";
 import { PAYMENT_NOTE } from "@/lib/copy";
+import { SLOT_PICKING } from "@/lib/features";
 import { formatPrice } from "@/lib/format";
 import { formatSlotFull } from "@/lib/time";
 
@@ -11,6 +12,7 @@ export type BookingEmailData = {
   placement: string;
   note?: string | null;
   designName: string;
+  /** Empty until the booking has a slot: the emails then leave the time out. */
   slotStartsAt?: string | null;
   price?: number | null;
   adminUrl: string;
@@ -34,7 +36,8 @@ const multiline = (value: string) => escapeHtml(value).replace(/\r?\n/g, "<br>")
 /** Set on <body> and again on the wrapper <div>: some mail clients drop the styles of <body>. */
 const BASE_STYLE = "background:#f7f7f5;color:#121211;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.6";
 
-const when = (d: BookingEmailData) => (d.slotStartsAt ? formatSlotFull(d.slotStartsAt) : "–");
+/** The booking's time, or null while it has no slot: each email words itself around a missing time. */
+const when = (d: BookingEmailData) => (d.slotStartsAt ? formatSlotFull(d.slotStartsAt) : null);
 const price = (d: BookingEmailData) => (typeof d.price === "number" ? formatPrice(d.price) : "–");
 
 function render(subject: string, blocks: Block[]): EmailContent {
@@ -66,21 +69,31 @@ function render(subject: string, blocks: Block[]): EmailContent {
   return { subject, html, text };
 }
 
-const details = (d: BookingEmailData): Block => ({
-  rows: [
-    ["Minta", d.designName],
-    ["Időpont", when(d)],
-    ["Ár", price(d)],
-  ],
-});
+/** The design, the time once the booking has one, and the price. */
+function summary(d: BookingEmailData): [string, string][] {
+  const time = when(d);
+  const rows: [string, string][] = [["Minta", d.designName]];
+  if (time) rows.push(["Időpont", time]);
+  rows.push(["Ár", price(d)]);
+  return rows;
+}
+
+const details = (d: BookingEmailData): Block => ({ rows: summary(d) });
 const greeting = (d: BookingEmailData): Block => ({ p: `Szia ${d.name}!` });
 const signature: Block = { p: "PANNIPIX" };
-const designsLink = (d: BookingEmailData): Block => ({ link: ["Flash minták és szabad időpontok", `${d.siteUrl}/#flash`] });
+/** The site lists free slots only while visitors pick one. */
+const designsLink = (d: BookingEmailData): Block => ({
+  link: [SLOT_PICKING ? "Flash minták és szabad időpontok" : "Flash minták", `${d.siteUrl}/#flash`],
+});
 
 export function customerReceivedEmail(d: BookingEmailData): EmailContent {
   return render(`Megkaptam a foglalásod – ${d.designName}`, [
     greeting(d),
-    { p: "Megkaptam a foglalásodat. Hamarosan átnézem, és e-mailben visszaigazolom." },
+    {
+      p: when(d)
+        ? "Megkaptam a foglalásodat. Hamarosan átnézem, és e-mailben visszaigazolom."
+        : "Megkaptam a foglalásodat. Hamarosan átnézem, és e-mailben visszaigazolom; az időpontot utána egyeztetjük.",
+    },
     details(d),
     { p: `${PAYMENT_NOTE} Ha kérdésed van, válaszolj erre a levélre.` },
     signature,
@@ -88,7 +101,18 @@ export function customerReceivedEmail(d: BookingEmailData): EmailContent {
 }
 
 export function customerConfirmedEmail(d: BookingEmailData): EmailContent {
-  return render(`Visszaigazolva: ${d.designName}, ${when(d)}`, [
+  const time = when(d);
+  if (!time) {
+    return render(`Visszaigazolva: ${d.designName}`, [
+      greeting(d),
+      { p: "Visszaigazolom a foglalásodat!" },
+      details(d),
+      { p: "Az időpontot és a részleteket, például a pontos elhelyezést, válaszlevélben egyeztetjük." },
+      { p: "Ha meggondoltad magad, kérlek, minél előbb válaszolj erre a levélre." },
+      signature,
+    ]);
+  }
+  return render(`Visszaigazolva: ${d.designName}, ${time}`, [
     greeting(d),
     { p: "Visszaigazolom a foglalásodat, várlak!" },
     details(d),
@@ -99,38 +123,51 @@ export function customerConfirmedEmail(d: BookingEmailData): EmailContent {
 }
 
 export function customerRejectedEmail(d: BookingEmailData): EmailContent {
+  const time = when(d);
   return render(`A foglalásod nem jött létre – ${d.designName}`, [
     greeting(d),
-    { p: `Sajnos a ${when(d)} időpontra szóló foglalásodat nem tudom vállalni.` },
-    { p: "Ha másik időpont vagy minta is jó, itt találod a szabadokat:" },
+    {
+      p: time
+        ? `Sajnos a ${time} időpontra szóló foglalásodat nem tudom vállalni.`
+        : "Sajnos ezt a foglalásodat nem tudom vállalni.",
+    },
+    {
+      p: SLOT_PICKING
+        ? "Ha másik időpont vagy minta is jó, itt találod a szabadokat:"
+        : "Ha másik minta is tetszik, itt találod a foglalhatókat:",
+    },
     designsLink(d),
     signature,
   ]);
 }
 
 export function customerCancelledEmail(d: BookingEmailData): EmailContent {
-  return render(`Lemondva: ${d.designName}, ${when(d)}`, [
+  const time = when(d);
+  return render(time ? `Lemondva: ${d.designName}, ${time}` : `Lemondva: ${d.designName}`, [
     greeting(d),
-    { p: `A ${when(d)} időpontra szóló foglalásod le lett mondva.` },
-    { p: "Ha új időpontot szeretnél, itt foglalhatsz:" },
+    { p: time ? `A ${time} időpontra szóló foglalásod le lett mondva.` : "A foglalásod le lett mondva." },
+    { p: SLOT_PICKING ? "Ha új időpontot szeretnél, itt foglalhatsz:" : "Ha újra foglalnál, itt találod a mintákat:" },
     designsLink(d),
     signature,
   ]);
 }
 
 export function adminNewBookingEmail(d: BookingEmailData): EmailContent {
+  const time = when(d);
   const rows: [string, string][] = [
-    ["Minta", d.designName],
-    ["Időpont", when(d)],
-    ["Ár", price(d)],
+    ...summary(d),
     ["Név", d.name],
     ["E-mail", d.email],
     ["Telefon", d.phone],
     ["Testtáj", d.placement],
   ];
   if (d.note) rows.push(["Megjegyzés", d.note]);
-  return render(`Új foglalás: ${d.designName} – ${when(d)}`, [
-    { p: "Új foglalás érkezett az oldalról, jóváhagyásra vár." },
+  return render(time ? `Új foglalás: ${d.designName} – ${time}` : `Új foglalás: ${d.designName}`, [
+    {
+      p: time
+        ? "Új foglalás érkezett az oldalról, jóváhagyásra vár."
+        : "Új foglalás érkezett az oldalról: jóváhagyásra és időpontra vár.",
+    },
     { rows },
     { link: ["Megnyitás az adminban", d.adminUrl] },
   ]);
@@ -145,8 +182,9 @@ export type BookingEmailKind =
 
 /**
  * Which emails a booking change sends. The customer hears about a decision once: a confirmation when a pending booking
- * is confirmed, a rejection or cancellation when an active booking is let go. Completing a booking, moving it to
- * another slot and correcting a status afterwards (completed to confirmed, rejected to cancelled) send none.
+ * is confirmed, a rejection or cancellation when an active booking is let go. Completing a booking, giving it a slot
+ * or moving it to another one, and correcting a status afterwards (completed to confirmed, rejected to cancelled)
+ * send none.
  */
 export function bookingEmailsFor({
   operation,

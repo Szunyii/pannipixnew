@@ -78,7 +78,7 @@ export async function bookFlash(formData: FormData): Promise<BookFlashState> {
   if (!result.ok) {
     // Only bookings that went through count against the limit.
     if (address) limiter.release(address);
-    // The design can't be booked any more: re-render the page too, so the cards and the spotlight stop offering it.
+    // The design can't be booked any more: re-render the page too, so the cards and the design page stop offering it.
     if (result.code === "sold_out" || result.code === "design_unavailable") refresh();
     return { status: "error", code: result.code };
   }

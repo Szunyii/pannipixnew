@@ -1,3 +1,5 @@
+import { SLOT_PICKING } from "./features";
+
 export const PLACEMENTS = [
   { value: "alkar", label: "Alkar" },
   { value: "felkar", label: "Felkar" },
@@ -15,7 +17,8 @@ export const placementLabel = (value: string) => PLACEMENTS.find((p) => p.value 
 
 export type BookingInput = {
   designId: number;
-  slotId: number;
+  /** null while visitors don't pick a slot (SLOT_PICKING): the admin gives the booking one afterwards. */
+  slotId: number | null;
   name: string;
   email: string;
   phone: string;
@@ -66,7 +69,8 @@ export function parseBookingInput(
 ): { ok: true; data: BookingInput } | { ok: false; fieldErrors: FieldErrors } {
   const errors: FieldErrors = {};
   const designId = positiveInt(raw.designId);
-  const slotId = positiveInt(raw.slotId);
+  // While visitors don't pick a slot, a posted one is ignored: the endpoint takes any field, whatever the form shows.
+  const slotId = SLOT_PICKING ? positiveInt(raw.slotId) : null;
   const name = text(raw.name);
   const email = text(raw.email);
   const phone = phoneText(raw.phone);
@@ -74,7 +78,7 @@ export function parseBookingInput(
   const note = noteText(raw.note);
 
   if (designId === null) errors.designId = "Hiányzik a minta.";
-  if (slotId === null) errors.slotId = "Válassz időpontot.";
+  if (SLOT_PICKING && slotId === null) errors.slotId = "Válassz időpontot.";
   if (name.length < 2 || name.length > 100 || NOT_IN_A_NAME.test(name) || LINK_LIKE.test(name)) {
     errors.name = "Add meg a neved.";
   }
@@ -90,7 +94,7 @@ export function parseBookingInput(
     errors.adult = "Csak 18 év felett foglalhatsz.";
   }
 
-  if (designId === null || slotId === null || !isPlacement(placement) || Object.keys(errors).length > 0) {
+  if (designId === null || !isPlacement(placement) || Object.keys(errors).length > 0) {
     return { ok: false, fieldErrors: errors };
   }
   return {

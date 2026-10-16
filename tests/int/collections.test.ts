@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { Forbidden, logError, type Payload, type SelectField } from "payload";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { CATEGORIES } from "@/lib/categories";
 import {
   createBooking,
-  createCategory,
   createDesign,
   createImage,
   createSlot,
@@ -29,66 +29,81 @@ const onDisk = (filename: string | null | undefined) =>
 
 describe("collections", () => {
   it("names designs and slots for the admin", async () => {
-    const category = await createCategory(payload, "single");
-    const design = await createDesign(payload, category.id);
-    expect(design.title).toBe(`${category.name} #${design.number}`);
+    const design = await createDesign(payload, { category: "pcons" });
+    expect(design.title).toBe(`P’CONs #${design.number}`);
+    const other = await createDesign(payload, { category: "daddywillhateus" });
+    expect(other.title).toBe(`daddywillhateus #${other.number}`);
 
     const slot = await payload.create({ collection: "slots", data: { startsAt: "2026-10-14T08:00:00.000Z" } });
     expect(slot.title).toBe("2026. 10. 14. (szerda) 10:00");
   });
 
-  it("renames a collection's designs with it", async () => {
-    const category = await createCategory(payload, "single");
-    const { id } = await createDesign(payload, category.id);
-    const before = await payload.findByID({ collection: "designs", id, depth: 0 });
+  it("offers the listed collections as a design's choices, and takes no other", async () => {
+    const field = payload.collections.designs.config.flattenedFields.find((f) => f.name === "category") as SelectField;
+    expect(field.options).toEqual(CATEGORIES.map(({ label, value }) => ({ label, value })));
+    expect(field.required).toBe(true);
 
-    await payload.update({ collection: "categories", id: category.id, data: { name: "Átnevezett" } });
+    await expect(
+      // @ts-expect-error a collection that isn't on the list
+      createDesign(payload, { category: "nincs-ilyen" }),
+    ).rejects.toMatchObject({ name: "ValidationError", data: { errors: [{ path: "category" }] } });
+  });
 
-    const after = await payload.findByID({ collection: "designs", id, depth: 0 });
-    expect(after.title).toBe(`Átnevezett #${before.number}`);
-    expect(after.images).toEqual(before.images);
+  it("renames a design when it moves to another collection", async () => {
+    const { id, number } = await createDesign(payload, { category: "pcons" });
+    const moved = await payload.update({ collection: "designs", id, data: { category: "ornx" } });
+    expect(moved.title).toBe(`ORNX #${number}`);
   });
 
   it("stores a design number trimmed", async () => {
-    const category = await createCategory(payload, "single");
-    const design = await createDesign(payload, category.id, { number: " 027 " });
+    const design = await createDesign(payload, { number: " 027 " });
     expect(design.number).toBe("027");
-    expect(design.title).toBe(`${category.name} #027`);
+    expect(design.title).toBe("P’CONs #027");
   });
 
   it("refuses a number its collection already has, but not another collection's", async () => {
-    const category = await createCategory(payload, "single");
-    await createDesign(payload, category.id, { number: "027" });
+    await createDesign(payload, { category: "pcons", number: "027" });
 
-    await expect(createDesign(payload, category.id, { number: "027" })).rejects.toMatchObject({
+    await expect(createDesign(payload, { category: "pcons", number: "027" })).rejects.toMatchObject({
       name: "ValidationError",
       data: { errors: [{ path: "number", message: "Ebben a kollekcióban már van ilyen sorszámú minta." }] },
     });
-    const other = await createCategory(payload, "single");
-    expect((await createDesign(payload, other.id, { number: "027" })).number).toBe("027");
+    expect((await createDesign(payload, { category: "ornx", number: "027" })).number).toBe("027");
   });
 
-  it("doesn't duplicate designs or collections", async () => {
-    const category = await createCategory(payload, "single");
-    const design = await createDesign(payload, category.id);
+  it("doesn't duplicate designs", async () => {
+    const design = await createDesign(payload);
     await expect(payload.duplicate({ collection: "designs", id: design.id })).rejects.toThrow(/cannot be duplicated/);
-    await expect(payload.duplicate({ collection: "categories", id: category.id })).rejects.toThrow(
-      /cannot be duplicated/,
-    );
   });
 
-  it("asks for at least two bookings on a limited collection", async () => {
-    await expect(
-      payload.create({ collection: "categories", data: { name: "Hibás", rule: "limited", limit: 1 } }),
-    ).rejects.toMatchObject({ name: "ValidationError", data: { errors: [{ path: "limit" }] } });
-    expect((await createCategory(payload, "limited", 2)).limit).toBe(2);
+  it("books a design once unless the admin says otherwise", async () => {
+    const image = await createImage(payload);
+    // @ts-expect-error the rule is left out, as on a form the admin saved without touching the field
+    const design = await payload.create({
+      collection: "designs",
+      data: { category: "pcons", number: "900", price: 90000, images: [{ image: image.id, kind: "art" }] },
+    });
+    expect(design.rule).toBe("single");
+    expect(design.limit ?? null).toBeNull();
   });
 
-  it("drops the limit of a collection that isn't limited", async () => {
-    const limited = await createCategory(payload, "limited", 3);
-    const single = await payload.update({ collection: "categories", id: limited.id, data: { rule: "single" } });
+  it("asks for at least two bookings on a limited design", async () => {
+    await expect(createDesign(payload, { rule: "limited", limit: 1 })).rejects.toMatchObject({
+      name: "ValidationError",
+      data: { errors: [{ path: "limit", message: "Limitált mintánál legalább 2 alkalmat adj meg." }] },
+    });
+    await expect(createDesign(payload, { rule: "limited" })).rejects.toMatchObject({
+      name: "ValidationError",
+      data: { errors: [{ path: "limit" }] },
+    });
+    expect((await createDesign(payload, { rule: "limited", limit: 2 })).limit).toBe(2);
+  });
+
+  it("drops the limit of a design that isn't limited", async () => {
+    const limited = await createDesign(payload, { rule: "limited", limit: 3 });
+    const single = await payload.update({ collection: "designs", id: limited.id, data: { rule: "single" } });
     expect(single.limit).toBeNull();
-    expect((await createCategory(payload, "unlimited", 5)).limit).toBeNull();
+    expect((await createDesign(payload, { rule: "unlimited", limit: 5 })).limit).toBeNull();
   });
 
   it("refuses a second slot at the same time", async () => {
@@ -100,16 +115,14 @@ describe("collections", () => {
   });
 
   it("hides switched-off designs from visitors", async () => {
-    const category = await createCategory(payload, "single");
-    await createDesign(payload, category.id, { visible: false });
-    const shown = await createDesign(payload, category.id);
+    await createDesign(payload, { visible: false });
+    const shown = await createDesign(payload);
     const result = await payload.find({ collection: "designs", overrideAccess: false });
     expect(result.docs.map((d) => d.id)).toEqual([shown.id]);
   });
 
   it("keeps visitors away from bookings, slots and admin accounts", async () => {
-    const category = await createCategory(payload, "single");
-    const design = await createDesign(payload, category.id);
+    const design = await createDesign(payload);
     const slot = await createSlot(payload);
 
     for (const collection of ["bookings", "slots", "users"] as const) {
@@ -122,17 +135,13 @@ describe("collections", () => {
         overrideAccess: false,
       }),
     ).rejects.toBeInstanceOf(Forbidden);
-    const categories = await payload.find({ collection: "categories", overrideAccess: false });
-    expect(categories.docs.map((c) => c.id)).toEqual([category.id]);
   });
 
-  it("keeps referenced collections, designs and slots from being deleted", async () => {
-    const category = await createCategory(payload, "unlimited");
-    const design = await createDesign(payload, category.id);
+  it("keeps referenced designs and slots from being deleted", async () => {
+    const design = await createDesign(payload, { rule: "unlimited" });
     const slot = await createSlot(payload);
     await createBooking(payload, design.id, slot.id);
 
-    await expect(payload.delete({ collection: "categories", id: category.id })).rejects.toThrow(/minta tartozik/);
     await expect(payload.delete({ collection: "designs", id: design.id })).rejects.toThrow(/foglalás tartozik/);
     await expect(payload.delete({ collection: "slots", id: slot.id })).rejects.toThrow(/foglalás tartozik/);
   });
@@ -143,7 +152,7 @@ describe("collections", () => {
 
     /** A slot a booking holds, and the booking. */
     async function heldSlot() {
-      const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+      const design = await createDesign(payload, { rule: "unlimited" });
       const slot = await createSlot(payload);
       const booking = await createBooking(payload, design.id, slot.id);
       return { slot, booking };
@@ -231,7 +240,7 @@ describe("collections", () => {
   it("keeps an image a design uses, files and all", async () => {
     const used = await createImage(payload);
     const unused = await createImage(payload);
-    await createDesign(payload, (await createCategory(payload, "single")).id, { image: used.id });
+    await createDesign(payload, { image: used.id });
 
     await expect(payload.delete({ collection: "media", id: used.id })).rejects.toThrow(
       "A kép nem törölhető, mert flash minta használja. Előbb cseréld le a mintában.",
@@ -244,9 +253,9 @@ describe("collections", () => {
   });
 
   it("logs a refused delete as info, not as a server error", async () => {
-    const category = await createCategory(payload, "single");
-    await createDesign(payload, category.id);
-    const refusal = await payload.delete({ collection: "categories", id: category.id }).catch((err: unknown) => err);
+    const design = await createDesign(payload);
+    await createBooking(payload, design.id, (await createSlot(payload)).id);
+    const refusal = await payload.delete({ collection: "designs", id: design.id }).catch((err: unknown) => err);
     expect(refusal).toMatchObject({ name: "DeleteRefusedError", status: 400, isPublic: true });
 
     const info = vi.spyOn(payload.logger, "info").mockImplementation(() => {});
@@ -262,8 +271,7 @@ describe("collections", () => {
   });
 
   it("shows whether a slot is free, booked or past", async () => {
-    const category = await createCategory(payload, "unlimited");
-    const design = await createDesign(payload, category.id);
+    const design = await createDesign(payload, { rule: "unlimited" });
     const free = await createSlot(payload);
     const booked = await createSlot(payload);
     const past = await createSlot(payload, { past: true });

@@ -52,17 +52,10 @@ export const Heart = ({ filled, ...p }: IconProps & { filled?: boolean }) => (
   </Icon>
 );
 
-export const Calendar = (p: IconProps) => (
+export const Eye = (p: IconProps) => (
   <Icon {...p}>
-    <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
-    <path d="M3.5 10h17M8 3v4M16 3v4" />
-  </Icon>
-);
-
-export const User = (p: IconProps) => (
-  <Icon {...p}>
-    <circle cx="12" cy="8.5" r="3.75" />
-    <path d="M4.75 20.5c1.2-3.9 4-5.75 7.25-5.75s6.05 1.85 7.25 5.75" />
+    <path d="M2.5 12c2.3-3.9 5.5-5.9 9.5-5.9s7.2 2 9.5 5.9c-2.3 3.9-5.5 5.9-9.5 5.9S4.8 15.9 2.5 12Z" />
+    <circle cx="12" cy="12" r="3" />
   </Icon>
 );
 

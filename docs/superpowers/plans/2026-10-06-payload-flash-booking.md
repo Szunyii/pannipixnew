@@ -10,6 +10,10 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-06-payload-flash-booking-design.md`
 
+> **Megjegyzés (2026-10-12):** az oldali időpontválasztó azóta ki van kapcsolva (`lib/features.ts`, `SLOT_PICKING`), és az időpont az admin oldalon sem kötelező. Ez a terv az eredeti megvalósítást rögzíti: a kódrészletei a kikapcsolás előtti állapotot mutatják. Az eltéréseket a spec 16. szakasza írja le.
+>
+> **Megjegyzés (2026-10-12, 2.):** a `categories` gyűjtemény megszűnt: a kollekció (`lib/categories.ts` listájából) és a foglalhatóság a minta mezője lett, és az induló migráció újra lett generálva. A terv kódrészletei a korábbi állapotot mutatják; az eltéréseket a spec 17. szakasza írja le.
+
 ---
 
 ## Fontos tudnivalók a végrehajtónak

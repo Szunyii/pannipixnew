@@ -1,19 +1,23 @@
 import { ValidationError, type CollectionBeforeChangeHook, type CollectionConfig, type Where } from "payload";
-import { relationId } from "@/lib/booking-rules";
+import { CATEGORIES, categoryName } from "@/lib/categories";
 import { designName } from "@/lib/design-name";
 import type { Design } from "@/payload-types";
 import { adminOrVisible, isAdmin } from "../access";
 import { guardDesignDelete } from "../booking/guards";
 
-/** Trims the number, refuses one the collection already has, and names the design "P’CONs #027" for admin lists and pickers. */
+/**
+ * Trims the number, refuses one the collection already has, and names the design "P’CONs #027" for admin lists and
+ * pickers. Only a limited design has a limit; clearing it otherwise keeps an old value from coming back with the rule.
+ */
 const prepareDesign: CollectionBeforeChangeHook<Design> = async ({ data, originalDoc, req }) => {
   if (typeof data.number === "string") data.number = data.number.trim();
-  const categoryId = relationId(data.category ?? originalDoc?.category);
+  if ((data.rule ?? originalDoc?.rule) !== "limited") data.limit = null;
+  const category = data.category ?? originalDoc?.category;
   const number = data.number ?? originalDoc?.number;
-  if (categoryId === null || !number) return data;
+  if (!category || !number) return data;
 
   // Checked here, a clash shows on the number field; the unique (category, number) index still settles two saves at once.
-  const sameNumber: Where[] = [{ category: { equals: categoryId } }, { number: { equals: number } }];
+  const sameNumber: Where[] = [{ category: { equals: category } }, { number: { equals: number } }];
   if (originalDoc?.id) sameNumber.push({ id: { not_equals: originalDoc.id } });
   const { totalDocs } = await req.payload.count({
     collection: "designs",
@@ -31,15 +35,7 @@ const prepareDesign: CollectionBeforeChangeHook<Design> = async ({ data, origina
     );
   }
 
-  const category = await req.payload.findByID({
-    collection: "categories",
-    id: categoryId,
-    depth: 0,
-    disableErrors: true,
-    overrideAccess: true,
-    req,
-  });
-  if (category) data.title = designName({ collection: category.name, number });
+  data.title = designName({ collection: categoryName(category), number });
   return data;
 };
 
@@ -48,7 +44,7 @@ export const Designs: CollectionConfig = {
   labels: { singular: "Flash minta", plural: "Flash minták" },
   admin: {
     useAsTitle: "title",
-    defaultColumns: ["title", "price", "visible", "updatedAt"],
+    defaultColumns: ["title", "price", "rule", "visible", "updatedAt"],
     group: "Flash",
     listSearchableFields: ["title", "number"],
   },
@@ -63,13 +59,53 @@ export const Designs: CollectionConfig = {
     {
       type: "row",
       fields: [
-        { name: "category", type: "relationship", relationTo: "categories", required: true, label: "Kollekció" },
+        {
+          name: "category",
+          type: "select",
+          required: true,
+          label: "Kollekció",
+          options: CATEGORIES.map(({ label, value }) => ({ label, value })),
+        },
         {
           name: "number",
           type: "text",
           required: true,
           label: "Sorszám",
           admin: { description: "A név után áll: 027 → P’CONs #027." },
+        },
+      ],
+    },
+    {
+      type: "row",
+      fields: [
+        {
+          name: "rule",
+          type: "select",
+          required: true,
+          defaultValue: "single",
+          label: "Foglalhatóság",
+          options: [
+            { label: "Egyszeri – egyszer foglalható", value: "single" },
+            { label: "Limitált – x alkalommal foglalható", value: "limited" },
+            { label: "Korlátlan – bármennyiszer foglalható", value: "unlimited" },
+          ],
+          admin: { description: "Hányszor foglalható ez a minta." },
+        },
+        {
+          name: "limit",
+          type: "number",
+          // Selects Payload's single-number field type, so validate's arguments below are typed.
+          hasMany: false,
+          label: "Alkalmak száma",
+          admin: {
+            condition: (_, siblingData) => siblingData?.rule === "limited",
+            description: "Ennyiszer foglalható a minta.",
+            step: 1,
+          },
+          validate: (value, { siblingData }) =>
+            (siblingData as { rule?: string }).rule !== "limited" ||
+            (typeof value === "number" && Number.isInteger(value) && value >= 2) ||
+            "Limitált mintánál legalább 2 alkalmat adj meg.",
         },
       ],
     },

@@ -23,7 +23,6 @@ export interface Config {
     bookings: Booking;
     slots: Slot;
     designs: Design;
-    categories: Category;
     media: Media;
     users: User;
     'payload-kv': PayloadKv;
@@ -36,7 +35,6 @@ export interface Config {
     bookings: BookingsSelect<false> | BookingsSelect<true>;
     slots: SlotsSelect<false> | SlotsSelect<true>;
     designs: DesignsSelect<false> | DesignsSelect<true>;
-    categories: CategoriesSelect<false> | CategoriesSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     users: UsersSelect<false> | UsersSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
@@ -79,7 +77,7 @@ export interface UserAuthOperations {
   };
 }
 /**
- * Az oldalon beküldött és a kézzel felvett foglalások. Elutasításkor vagy lemondáskor az időpont és a minta egy alkalma újra foglalható lesz.
+ * Az oldalon beküldött és a kézzel felvett foglalások. Az oldalról időpont nélkül érkeznek: az Időpont mezőben te adod meg. Elutasításkor vagy lemondáskor az időpont és a minta egy alkalma újra foglalható lesz.
  *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "bookings".
@@ -89,7 +87,7 @@ export interface Booking {
   title?: string | null;
   design: number | Design;
   /**
-   * Csak szabad időpont választható.
+   * Nem kötelező, később is megadhatod; csak szabad időpont választható. A visszaigazoló e-mailbe akkor kerül be, ha a jóváhagyáskor már ki van választva.
    */
   slot?: (number | null) | Slot;
   /**
@@ -116,11 +114,19 @@ export interface Booking {
 export interface Design {
   id: number;
   title?: string | null;
-  category: number | Category;
+  category: 'pcons' | 'ornx' | 'daddywillhateus';
   /**
    * A név után áll: 027 → P’CONs #027.
    */
   number: string;
+  /**
+   * Hányszor foglalható ez a minta.
+   */
+  rule: 'single' | 'limited' | 'unlimited';
+  /**
+   * Ennyiszer foglalható a minta.
+   */
+  limit?: number | null;
   /**
    * Tájékoztató ár, az oldalon nincs fizetés.
    */
@@ -145,27 +151,6 @@ export interface Design {
     id?: string | null;
   }[];
   visible?: boolean | null;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
- * A kollekció dönti el, hányszor foglalható egy-egy mintája.
- *
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "categories".
- */
-export interface Category {
-  id: number;
-  name: string;
-  rule: 'single' | 'limited' | 'unlimited';
-  /**
-   * Hányszor foglalható egy minta ebben a kollekcióban.
-   */
-  limit?: number | null;
-  /**
-   * A kisebb szám előrébb kerül az oldalon.
-   */
-  order?: number | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -202,7 +187,7 @@ export interface Media {
   };
 }
 /**
- * Szabad időpontok, amelyekre az oldalon flash mintát lehet foglalni. Egy időpontra egy foglalás jut.
+ * Időpontok, amelyeket a foglalásokhoz rendelhetsz, a foglalás Időpont mezőjében. Egy időpontra egy foglalás jut. Az oldalon a vendégek most nem választanak időpontot.
  *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "slots".
@@ -277,10 +262,6 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'designs';
         value: number | Design;
-      } | null)
-    | ({
-        relationTo: 'categories';
-        value: number | Category;
       } | null)
     | ({
         relationTo: 'media';
@@ -374,6 +355,8 @@ export interface DesignsSelect<T extends boolean = true> {
   title?: T;
   category?: T;
   number?: T;
+  rule?: T;
+  limit?: T;
   price?: T;
   badge?: T;
   size?: T;
@@ -388,18 +371,6 @@ export interface DesignsSelect<T extends boolean = true> {
         id?: T;
       };
   visible?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "categories_select".
- */
-export interface CategoriesSelect<T extends boolean = true> {
-  name?: T;
-  rule?: T;
-  limit?: T;
-  order?: T;
   updatedAt?: T;
   createdAt?: T;
 }

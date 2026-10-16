@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SLOT_PICKING } from "@/lib/features";
 import { container } from "./ui";
 
 type Tab = "egyedi" | "flash";
@@ -38,13 +39,21 @@ const steps: Record<Tab, { title: string; body: string }[]> = {
       title: "Választás",
       body: "Kiválasztod a mintát. Mindegyiknél látod az ajánlott méretet, a testtájakat és azt, hányszor foglalható még.",
     },
-    {
-      title: "Időpontfoglalás",
-      body: "Kiválasztasz egy szabad időpontot, és elküldöd a foglalást. Most nem fizetsz semmit.",
-    },
+    // While visitors don't pick a slot, the time is arranged together with the confirmation.
+    SLOT_PICKING
+      ? {
+          title: "Időpontfoglalás",
+          body: "Kiválasztasz egy szabad időpontot, és elküldöd a foglalást. Most nem fizetsz semmit.",
+        }
+      : {
+          title: "Foglalás",
+          body: "Megadod az adataidat, és elküldöd a foglalást. Most nem fizetsz semmit.",
+        },
     {
       title: "Visszaigazolás",
-      body: "Átnézem a foglalást, és e-mailben visszaigazolom. Ekkor egyeztetjük a pontos elhelyezést is.",
+      body: SLOT_PICKING
+        ? "Átnézem a foglalást, és e-mailben visszaigazolom. Ekkor egyeztetjük a pontos elhelyezést is."
+        : "Átnézem a foglalást, és e-mailben visszaigazolom. Ekkor egyeztetjük az időpontot és a pontos elhelyezést is.",
     },
     {
       title: "Tetoválás",

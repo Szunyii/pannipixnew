@@ -1,6 +1,7 @@
 import type { CollectionConfig, Where } from "payload";
 import { PLACEMENTS } from "@/lib/booking-input";
 import { STATUS_LABELS, relationId } from "@/lib/booking-rules";
+import { SLOT_PICKING } from "@/lib/features";
 import { isAdmin } from "../access";
 import { prepareBooking } from "../booking/hooks";
 import { sendBookingEmails } from "../emails/send";
@@ -12,8 +13,9 @@ export const Bookings: CollectionConfig = {
     useAsTitle: "title",
     defaultColumns: ["title", "slotStartsAt", "status", "phone", "createdAt"],
     group: "Foglalás",
-    description:
-      "Az oldalon beküldött és a kézzel felvett foglalások. Elutasításkor vagy lemondáskor az időpont és a minta egy alkalma újra foglalható lesz.",
+    description: SLOT_PICKING
+      ? "Az oldalon beküldött és a kézzel felvett foglalások. Elutasításkor vagy lemondáskor az időpont és a minta egy alkalma újra foglalható lesz."
+      : "Az oldalon beküldött és a kézzel felvett foglalások. Az oldalról időpont nélkül érkeznek: az Időpont mezőben te adod meg. Elutasításkor vagy lemondáskor az időpont és a minta egy alkalma újra foglalható lesz.",
     listSearchableFields: ["name", "email", "phone", "designName"],
   },
   defaultSort: "-createdAt",
@@ -42,7 +44,10 @@ export const Bookings: CollectionConfig = {
           relationTo: "slots",
           unique: true,
           label: "Időpont",
-          admin: { description: "Csak szabad időpont választható." },
+          admin: {
+            description:
+              "Nem kötelező, később is megadhatod; csak szabad időpont választható. A visszaigazoló e-mailbe akkor kerül be, ha a jóváhagyáskor már ki van választva.",
+          },
           // The picker only offers slots no other booking holds.
           filterOptions: async ({ id, req }) => {
             const conditions: Where[] = [{ slot: { exists: true } }];

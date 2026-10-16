@@ -7,7 +7,6 @@ import { hu } from "@payloadcms/translations/languages/hu";
 import { buildConfig, defaultLoggerOptions } from "payload";
 import sharp from "sharp";
 import { Bookings } from "./cms/collections/Bookings";
-import { Categories } from "./cms/collections/Categories";
 import { Designs } from "./cms/collections/Designs";
 import { Media } from "./cms/collections/Media";
 import { Slots } from "./cms/collections/Slots";
@@ -50,7 +49,7 @@ export default buildConfig({
       supportedTimezones: [{ label: "Budapest", value: TIME_ZONE }],
     },
   },
-  collections: [Bookings, Slots, Designs, Categories, Media, Users],
+  collections: [Bookings, Slots, Designs, Media, Users],
   db: sqliteAdapter({
     client: { url: databaseUrl() },
     // WAL lets the site read while a booking is written; busyTimeout waits out a brief lock instead of failing.

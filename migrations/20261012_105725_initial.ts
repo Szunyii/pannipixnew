@@ -57,8 +57,10 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   await db.run(sql`CREATE TABLE \`designs\` (
   	\`id\` integer PRIMARY KEY NOT NULL,
   	\`title\` text,
-  	\`category_id\` integer NOT NULL,
+  	\`category\` text NOT NULL,
   	\`number\` text NOT NULL,
+  	\`rule\` text DEFAULT 'single' NOT NULL,
+  	\`limit\` numeric,
   	\`price\` numeric NOT NULL,
   	\`badge\` text,
   	\`size\` text,
@@ -66,27 +68,12 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   	\`description\` text,
   	\`visible\` integer DEFAULT true,
   	\`updated_at\` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
-  	\`created_at\` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
-  	FOREIGN KEY (\`category_id\`) REFERENCES \`categories\`(\`id\`) ON UPDATE no action ON DELETE set null
-  );
-  `)
-  await db.run(sql`CREATE INDEX \`designs_category_idx\` ON \`designs\` (\`category_id\`);`)
-  await db.run(sql`CREATE INDEX \`designs_updated_at_idx\` ON \`designs\` (\`updated_at\`);`)
-  await db.run(sql`CREATE INDEX \`designs_created_at_idx\` ON \`designs\` (\`created_at\`);`)
-  await db.run(sql`CREATE UNIQUE INDEX \`category_number_idx\` ON \`designs\` (\`category_id\`,\`number\`);`)
-  await db.run(sql`CREATE TABLE \`categories\` (
-  	\`id\` integer PRIMARY KEY NOT NULL,
-  	\`name\` text NOT NULL,
-  	\`rule\` text DEFAULT 'single' NOT NULL,
-  	\`limit\` numeric,
-  	\`order\` numeric DEFAULT 0,
-  	\`updated_at\` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
   	\`created_at\` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL
   );
   `)
-  await db.run(sql`CREATE UNIQUE INDEX \`categories_name_idx\` ON \`categories\` (\`name\`);`)
-  await db.run(sql`CREATE INDEX \`categories_updated_at_idx\` ON \`categories\` (\`updated_at\`);`)
-  await db.run(sql`CREATE INDEX \`categories_created_at_idx\` ON \`categories\` (\`created_at\`);`)
+  await db.run(sql`CREATE INDEX \`designs_updated_at_idx\` ON \`designs\` (\`updated_at\`);`)
+  await db.run(sql`CREATE INDEX \`designs_created_at_idx\` ON \`designs\` (\`created_at\`);`)
+  await db.run(sql`CREATE UNIQUE INDEX \`category_number_idx\` ON \`designs\` (\`category\`,\`number\`);`)
   await db.run(sql`CREATE TABLE \`media\` (
   	\`id\` integer PRIMARY KEY NOT NULL,
   	\`alt\` text NOT NULL,
@@ -166,14 +153,12 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   	\`bookings_id\` integer,
   	\`slots_id\` integer,
   	\`designs_id\` integer,
-  	\`categories_id\` integer,
   	\`media_id\` integer,
   	\`users_id\` integer,
   	FOREIGN KEY (\`parent_id\`) REFERENCES \`payload_locked_documents\`(\`id\`) ON UPDATE no action ON DELETE cascade,
   	FOREIGN KEY (\`bookings_id\`) REFERENCES \`bookings\`(\`id\`) ON UPDATE no action ON DELETE cascade,
   	FOREIGN KEY (\`slots_id\`) REFERENCES \`slots\`(\`id\`) ON UPDATE no action ON DELETE cascade,
   	FOREIGN KEY (\`designs_id\`) REFERENCES \`designs\`(\`id\`) ON UPDATE no action ON DELETE cascade,
-  	FOREIGN KEY (\`categories_id\`) REFERENCES \`categories\`(\`id\`) ON UPDATE no action ON DELETE cascade,
   	FOREIGN KEY (\`media_id\`) REFERENCES \`media\`(\`id\`) ON UPDATE no action ON DELETE cascade,
   	FOREIGN KEY (\`users_id\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE cascade
   );
@@ -184,7 +169,6 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   await db.run(sql`CREATE INDEX \`payload_locked_documents_rels_bookings_id_idx\` ON \`payload_locked_documents_rels\` (\`bookings_id\`);`)
   await db.run(sql`CREATE INDEX \`payload_locked_documents_rels_slots_id_idx\` ON \`payload_locked_documents_rels\` (\`slots_id\`);`)
   await db.run(sql`CREATE INDEX \`payload_locked_documents_rels_designs_id_idx\` ON \`payload_locked_documents_rels\` (\`designs_id\`);`)
-  await db.run(sql`CREATE INDEX \`payload_locked_documents_rels_categories_id_idx\` ON \`payload_locked_documents_rels\` (\`categories_id\`);`)
   await db.run(sql`CREATE INDEX \`payload_locked_documents_rels_media_id_idx\` ON \`payload_locked_documents_rels\` (\`media_id\`);`)
   await db.run(sql`CREATE INDEX \`payload_locked_documents_rels_users_id_idx\` ON \`payload_locked_documents_rels\` (\`users_id\`);`)
   await db.run(sql`CREATE TABLE \`payload_preferences\` (
@@ -232,7 +216,6 @@ export async function down({ db, payload, req }: MigrateDownArgs): Promise<void>
   await db.run(sql`DROP TABLE \`slots\`;`)
   await db.run(sql`DROP TABLE \`designs_images\`;`)
   await db.run(sql`DROP TABLE \`designs\`;`)
-  await db.run(sql`DROP TABLE \`categories\`;`)
   await db.run(sql`DROP TABLE \`media\`;`)
   await db.run(sql`DROP TABLE \`users_sessions\`;`)
   await db.run(sql`DROP TABLE \`users\`;`)

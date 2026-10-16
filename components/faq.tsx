@@ -13,7 +13,7 @@ const faqs = [
   },
   {
     q: "Mi történik a flash mintával, miután elkészült?",
-    a: "Ez a kollekción múlik. Az egyszeri minta egy alkalom után lekerül a kínálatból, a limitált mintát a megadott számú alkalommal tetoválom, a korlátlanul foglalható mintát pedig bármennyiszer.",
+    a: "Ez mintánként változik, mindegyiknél jelzem. Az egyszeri minta egy alkalom után lekerül a kínálatból, a limitált mintát a megadott számú alkalommal tetoválom, a korlátlanul foglalható mintát pedig bármennyiszer.",
   },
   {
     q: "Kell előre fizetnem a flash mintáért?",

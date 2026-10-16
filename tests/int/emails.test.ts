@@ -6,7 +6,6 @@ import { sendBookingEmails } from "@/cms/emails/send";
 import type { Booking } from "@/payload-types";
 import {
   createBooking,
-  createCategory,
   createDesign,
   createSlot,
   customer,
@@ -42,7 +41,7 @@ afterEach(() => {
 });
 
 async function design() {
-  return createDesign(payload, (await createCategory(payload, "unlimited")).id);
+  return createDesign(payload, { rule: "unlimited" });
 }
 
 /** The id of the one booking in the database: a booking whose emails failed must still have been saved. */
@@ -121,6 +120,30 @@ describe("booking emails", () => {
     await payload.update({ collection: "bookings", id: booking.id, data: { status: "confirmed" } });
     await payload.update({ collection: "bookings", id: booking.id, data: { status: "cancelled" } });
     expect(sent.map((m) => m.subject.split(":")[0])).toEqual(["Visszaigazolva", "Lemondva"]);
+  });
+
+  it("leave the time out for a booking that has no slot yet, and put it in once the admin gives it one", async () => {
+    const d = await design();
+    const booking = await payload.create({ collection: "bookings", data: { ...customer, design: d.id, status: "pending" } });
+    expect(sent.map((m) => m.subject)).toEqual([`Megkaptam a foglalásod – ${booking.designName}`]);
+    expect(sent[0].text).not.toContain("Időpont:");
+
+    // Approved together with its slot: the confirmation carries the time.
+    sent = [];
+    const slot = await createSlot(payload);
+    await payload.update({ collection: "bookings", id: booking.id, data: { status: "confirmed", slot: slot.id } });
+    expect(sent).toHaveLength(1);
+    expect(sent[0].subject).toMatch(new RegExp(`^Visszaigazolva: ${booking.designName}, \\d{4}\\. `));
+    expect(sent[0].text).toContain("Időpont: ");
+  });
+
+  it("confirm a booking that still has no slot without naming a time", async () => {
+    const d = await design();
+    const booking = await payload.create({ collection: "bookings", data: { ...customer, design: d.id, status: "pending" } });
+    sent = [];
+    await payload.update({ collection: "bookings", id: booking.id, data: { status: "confirmed" } });
+    expect(sent.map((m) => m.subject)).toEqual([`Visszaigazolva: ${booking.designName}`]);
+    expect(sent[0].text).not.toContain("Időpont:");
   });
 
   it("stay quiet when a booking is completed", async () => {

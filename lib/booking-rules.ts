@@ -23,7 +23,7 @@ export const isActiveStatus = (status: string | null | undefined) =>
 export const isReleasedStatus = (status: string | null | undefined) =>
   (RELEASED_STATUSES as readonly string[]).includes(status ?? "");
 
-/** How many times a design may be booked under its collection's rule; null means no limit. Bad input fails closed. */
+/** How many times a design may be booked under its rule; null means no limit. Bad input fails closed. */
 export function effectiveLimit({ rule, limit }: RuleSource): number | null {
   switch (rule) {
     case "unlimited":
@@ -47,11 +47,11 @@ export type Availability = {
   soldOut: boolean;
 };
 
-export function availability(category: RuleSource, activeCount: number): Availability {
-  const limit = effectiveLimit(category);
-  if (limit === null) return { rule: category.rule, limit: null, remaining: null, soldOut: false };
+export function availability(design: RuleSource, activeCount: number): Availability {
+  const limit = effectiveLimit(design);
+  if (limit === null) return { rule: design.rule, limit: null, remaining: null, soldOut: false };
   const remaining = Math.max(0, limit - activeCount);
-  return { rule: category.rule, limit, remaining, soldOut: remaining === 0 };
+  return { rule: design.rule, limit, remaining, soldOut: remaining === 0 };
 }
 
 /**
@@ -69,7 +69,7 @@ export function lowestFreeSeat(taken: Iterable<number | null | undefined>, limit
 
 /**
  * The seat a new booking takes, or null when the design is fully booked. Every active booking counts,
- * including ones without a seat (made while the collection was unlimited) or above a since-lowered limit.
+ * including ones without a seat (made while the design was unlimited) or above a since-lowered limit.
  */
 export function nextSeat(activeSeats: readonly (number | null | undefined)[], limit: number): number | null {
   return activeSeats.length < limit ? lowestFreeSeat(activeSeats, limit) : null;

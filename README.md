@@ -1,6 +1,6 @@
 # PANNIPIX
 
-Tetoválás-portfólió és időpontfoglalás flash mintákra. Next.js 16 + Payload CMS 3 (SQLite).
+Tetoválás-portfólió és foglalás flash mintákra. Next.js 16 + Payload CMS 3 (SQLite).
 
 > **Figyelem:** az éles adatbázison soha ne futtasd az `npm run dev`-et vagy az `npm run seed`-et, és ne töltsd fel a helyi `.data/` adatbázist, mert utána az éles oldal nem tölt be. A tünet és a javítás: [Biztonságos üzemeltetés](#biztonságos-üzemeltetés).
 
@@ -10,7 +10,7 @@ Előfeltétel: Node.js 22.12 vagy újabb (a tesztek miatt).
 
 1. `npm install`
 2. `cp .env.example .env`, majd a `PAYLOAD_SECRET=` után írj egy hosszú, véletlen értéket (például az `openssl rand -hex 32` kimenetét).
-3. `npm run seed`: üres adatbázisba feltölti a három kollekciót, a helyőrző mintákat, 12 szabad időpontot (három hétre előre, keddenként és csütörtökönként 10:00-kor és 15:00-kor) és egy archív foglalást (emiatt a P’CONs #021 minta „elkelt”).
+3. `npm run seed`: üres adatbázisba feltölti a helyőrző mintákat (mind P’CONs, egyszeri foglalhatósággal), 12 szabad időpontot (három hétre előre, keddenként és csütörtökönként 10:00-kor és 15:00-kor) és egy archív foglalást (emiatt a P’CONs #021 minta „elkelt”).
 4. `npm run dev`
    - oldal: http://localhost:3000
    - admin: http://localhost:3000/admin (első alkalommal itt hozod létre az admin fiókot)
@@ -38,11 +38,13 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 
 ## Hogyan működik a foglalás
 
-- **Kollekció:** a *Foglalhatóság* mezője dönti el, hányszor foglalható egy-egy mintája: *Egyszeri* (1), *Limitált* (x; az *Alkalmak száma* mezőben adod meg, legalább 2) vagy *Korlátlan*.
-- **Időpontok:** egy közös naptár. Bármelyik minta bármelyik szabad időpontra foglalható, és egy időpontra egy foglalás jut. Foglalt időpont kezdése nem módosítható: ha át kell tenni egy foglalást, vegyél fel új időpontot, és a foglalás *Időpont* mezőjében válaszd ki. A *Lejárt* időpontokat (elmúltak, és nem tartozik hozzájuk foglalás) érdemes időnként törölni, mert a foglalás *Időpont* mezőjének választójában a jövőbeli időpontok elé kerülnek.
-- **Foglalás:** beküldéskor azonnal leköti az időpontot és a minta egy alkalmát, állapota *Függőben*. Az admin *Jóváhagyva* vagy *Elutasítva* állapotra állítja, a tetoválás után *Elkészült* állapotra, ha pedig az ügyfél lemondja, *Lemondva* állapotra. A *Függőben*, *Jóváhagyva* és *Elkészült* foglalás tartja az időpontot és az alkalmat; *Elutasítva* és *Lemondva* állapotban mindkettő újra szabad.
+- **Minta:** a *Kollekció* mezőben legördülő listából választod ki, melyik kollekcióba tartozik. A *Foglalhatóság* mező mintánként dönti el, hányszor foglalható: *Egyszeri* (1), *Limitált* (x; az *Alkalmak száma* mezőben adod meg, legalább 2) vagy *Korlátlan*. Egy kollekción belül a minták foglalhatósága eltérhet. Az oldalon minden mintának saját oldala van: `/flash/<kollekció értéke>/<sorszám>`, például `/flash/pcons/028`.
+- **Kollekciók:** a listájuk a kódban van (`lib/categories.ts`), az adminban nincs külön menüpontjuk. Új kollekcióhoz vegyél fel oda egy sort, és élesítsd; migráció nem kell hozzá. Az oldal szűrője a lista sorrendjében mutatja őket.
+- **Időpontok:** az oldalon a vendég most nem választ időpontot (lásd *Időpontválasztó*), csak a mintát foglalja le; az időpontot te rendeled a foglaláshoz. Vegyél fel egy időpontot az *Időpontok* között, majd a foglalás *Időpont* mezőjében válaszd ki. Egy közös naptár van: bármelyik foglalás bármelyik szabad időpontot megkaphatja, és egy időpontra egy foglalás jut. Foglalt időpont kezdése nem módosítható: ha át kell tenni egy foglalást, vegyél fel új időpontot, és a foglalás *Időpont* mezőjében válaszd ki. A *Lejárt* időpontokat (elmúltak, és nem tartozik hozzájuk foglalás) érdemes időnként törölni, mert a foglalás *Időpont* mezőjének választójában a jövőbeli időpontok elé kerülnek.
+- **Foglalás:** beküldéskor azonnal leköti a minta egy alkalmát, állapota *Függőben*, időpontja még nincs. Az admin *Jóváhagyva* vagy *Elutasítva* állapotra állítja, a tetoválás után *Elkészült* állapotra, ha pedig az ügyfél lemondja, *Lemondva* állapotra. Az *Időpont* mező nem kötelező: bármikor megadható, cserélhető vagy törölhető. A *Függőben*, *Jóváhagyva* és *Elkészült* foglalás tartja az alkalmat és (ha van) az időpontot; *Elutasítva* és *Lemondva* állapotban mindkettő újra szabad.
 - **Dupla foglalás:** két egyedi index (`slot`, illetve `design + seat`) zárja ki akkor is, ha ketten egyszerre kattintanak.
-- **E-mailek:** az `ADMIN_EMAIL` címre minden, az oldalon beküldött foglalásról levél érkezik. Az ügyfél a beérkezésről, a jóváhagyásról (a levél tárgya: „Visszaigazolva: …”), az elutasításról és a lemondásról kap levelet.
+- **E-mailek:** az `ADMIN_EMAIL` címre minden, az oldalon beküldött foglalásról levél érkezik. Az ügyfél a beérkezésről, a jóváhagyásról (a levél tárgya: „Visszaigazolva: …”), az elutasításról és a lemondásról kap levelet. Az időpont akkor szerepel a levelekben, ha a foglalásnak már van: ha a jóváhagyással egy mentésben adod meg, a visszaigazolás már tartalmazza; különben a levél azt írja, hogy az időpontot válaszlevélben egyeztetitek. Az időpont utólagos megadásáról vagy cseréjéről nem megy külön levél.
+- **Időpontválasztó:** az oldali időpontválasztó ki van kapcsolva; a `lib/features.ts` `SLOT_PICKING` konstansa kapcsolja. `true` értékkel a foglalási ablak első lépése újra az időpontválasztás, az űrlap megköveteli az időpontot, és az oldal meg a levelek szövege is visszaáll (az admin oldalon az időpont ekkor sem kötelező). Átállítás után futtasd az `npm run generate:types` parancsot, mert az admin leírások a `payload-types.ts` megjegyzéseibe is bekerülnek.
 
 ## Élesítés (Hostinger, Node.js alkalmazás)
 
@@ -59,7 +61,7 @@ Ez a lista az első élesítés lépéseit adja. Későbbi deployoknál (főleg 
 3. **Build és indítás:** `npm run build`, indítás: `npm start`. Ha a build memóriahiány miatt leáll: `NODE_OPTIONS=--max-old-space-size=4096 npm run build`.
 
    **Migrációk:** a még nem futtatott migrációkat a Payload az indítás utáni **első kérésnél** futtatja le, nem magánál az `npm start`-nál. Ezért minden deploy után nyisd meg egyszer az oldalt (pl. `curl -fsS -m 30 https://<domain>/ -o /dev/null`), majd nézd meg a naplóban (hPanel → a Node.js alkalmazás naplója) a `Migrating:` / `Migrated:` sorokat (ha nincsenek, nem volt függő migráció), és azt, hogy nincs-e `Error running migration` hiba. Ha ilyet látsz, a teendőt a [Biztonságos üzemeltetés](#biztonságos-üzemeltetés) „Migráció élesítése előtt ments” pontja írja le.
-4. **Első indítás után:** nyisd meg a `/admin` oldalt, és azonnal hozd létre az admin fiókot (amíg nincs fiók, bárki létrehozhatja az elsőt), majd vedd fel a kollekciókat, a mintákat és az időpontokat. Ezután próbáld ki élőben is. A próbához legalább 4 szabad időpont és legalább 4 szabad alkalom kell a mintákon (elég egy *Korlátlan* kollekcióbeli minta is); a végén töröld a próbafoglalásokat a *Foglalások* között.
+4. **Első indítás után:** nyisd meg a `/admin` oldalt, és azonnal hozd létre az admin fiókot (amíg nincs fiók, bárki létrehozhatja az elsőt), majd vedd fel a mintákat (időpontot elég akkor felvenni, amikor egy foglaláshoz rendeled). Ezután próbáld ki élőben is. A próbához legalább 4 szabad alkalom kell a mintákon (elég egy *Korlátlan* minta is); bekapcsolt időpontválasztó mellett legalább 4 szabad időpont is; a végén töröld a próbafoglalásokat a *Foglalások* között.
    - Ugyanarról az eszközről foglalj egymás után négyszer: az első három átmegy, a negyediknél az oldal a „Túl sok foglalás érkezett erről a hálózatról. Próbáld újra később, vagy írj Instagramon: @pannipix.” üzenetet adja.
    - Egy másik hálózatról (pl. mobilnetről) még lehet foglalni.
    - Nézd meg, megérkezett-e a két levél (az adminnak és az ügyfélnek; lásd a 6. pontot).

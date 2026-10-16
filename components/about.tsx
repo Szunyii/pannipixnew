@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { container } from "./ui";
 
 const styleNotes = [
@@ -18,6 +19,16 @@ export function About() {
           >
             Gondolatokat tetoválok, <em>nem csak képeket.</em>
           </h2>
+          <figure className="relative mt-12 aspect-[4/5] max-w-[26rem] overflow-hidden rounded-[3px] bg-stencil lg:mt-16">
+            <Image
+              src="/studio/photographing.webp"
+              alt="Panni a stúdióban lefotózza egy vendég frissen elkészült alkartetoválását"
+              fill
+              quality={90}
+              sizes="(min-width: 1024px) 26rem, 90vw"
+              className="object-cover"
+            />
+          </figure>
         </div>
 
         <div className="lg:col-span-5 lg:col-start-8 lg:pt-12">

@@ -3,7 +3,6 @@ import type { Payload } from "payload";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPublicBooking } from "@/cms/booking/public";
 import {
-  createCategory,
   createDesign,
   createSlot,
   customer,
@@ -12,6 +11,14 @@ import {
   resetDatabase,
 } from "../helpers";
 
+// Both settings of the switch are pinned here, so the tests hold whichever way lib/features.ts has it.
+const features = vi.hoisted(() => ({ slotPicking: true }));
+vi.mock("@/lib/features", () => ({
+  get SLOT_PICKING() {
+    return features.slotPicking;
+  },
+}));
+
 let payload: Payload;
 
 beforeAll(async () => {
@@ -19,12 +26,13 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  features.slotPicking = true;
   await resetDatabase(payload);
 });
 
 describe("website bookings", () => {
   it("always start as pending", async () => {
-    const design = await createDesign(payload, (await createCategory(payload, "single")).id);
+    const design = await createDesign(payload);
     const booking = await payload.create({
       collection: "bookings",
       data: { ...customer, design: design.id, slot: (await createSlot(payload)).id, status: "confirmed" },
@@ -34,9 +42,8 @@ describe("website bookings", () => {
   });
 
   it("refuse past slots and hidden designs", async () => {
-    const category = await createCategory(payload, "unlimited");
-    const design = await createDesign(payload, category.id);
-    const hidden = await createDesign(payload, category.id, { visible: false });
+    const design = await createDesign(payload, { rule: "unlimited" });
+    const hidden = await createDesign(payload, { rule: "unlimited", visible: false });
 
     expect(await createPublicBooking(payload, publicInput(design.id, (await createSlot(payload, { past: true })).id))).toEqual({
       ok: false,
@@ -49,12 +56,12 @@ describe("website bookings", () => {
   });
 
   it("report a slot that no longer exists as taken", async () => {
-    const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+    const design = await createDesign(payload, { rule: "unlimited" });
     expect(await createPublicBooking(payload, publicInput(design.id, 999_999))).toEqual({ ok: false, code: "slot_taken" });
   });
 
   it("let exactly one of two simultaneous requests take the last booking of a design", async () => {
-    const design = await createDesign(payload, (await createCategory(payload, "single")).id);
+    const design = await createDesign(payload);
     const [s1, s2] = [await createSlot(payload), await createSlot(payload)];
 
     const results = await Promise.all([
@@ -68,7 +75,7 @@ describe("website bookings", () => {
   });
 
   it("let two simultaneous requests share a design with two bookings left", async () => {
-    const design = await createDesign(payload, (await createCategory(payload, "limited", 2)).id);
+    const design = await createDesign(payload, { rule: "limited", limit: 2 });
     const [s1, s2] = [await createSlot(payload), await createSlot(payload)];
 
     const results = await Promise.all([
@@ -83,7 +90,7 @@ describe("website bookings", () => {
 
   it("give every seat to a crowd that asks at once, and tell the rest it sold out", async () => {
     // More requests than MAX_ATTEMPTS: if the losers retried in lockstep, the last ones would run out of attempts.
-    const design = await createDesign(payload, (await createCategory(payload, "limited", 12)).id);
+    const design = await createDesign(payload, { rule: "limited", limit: 12 });
     const slots = [];
     for (let i = 0; i < 14; i += 1) slots.push(await createSlot(payload));
 
@@ -96,7 +103,7 @@ describe("website bookings", () => {
   });
 
   it("log a failed insert without the booking's data", async () => {
-    const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+    const design = await createDesign(payload, { rule: "unlimited" });
     const slot = await createSlot(payload);
     const booking = { ...publicInput(design.id, slot.id), note: "Allergiás vagyok a festékre" };
     const details = [booking.name, booking.email, booking.phone, booking.note];
@@ -124,7 +131,7 @@ describe("website bookings", () => {
   });
 
   it("log which field Payload refused, not what the visitor entered", async () => {
-    const design = await createDesign(payload, (await createCategory(payload, "unlimited")).id);
+    const design = await createDesign(payload, { rule: "unlimited" });
     const slot = await createSlot(payload);
     // An address Payload's email field turns away.
     const booking = { ...publicInput(design.id, slot.id), email: "not-an-email" };
@@ -144,8 +151,7 @@ describe("website bookings", () => {
   });
 
   it("let exactly one of two simultaneous requests take a slot", async () => {
-    const category = await createCategory(payload, "unlimited");
-    const [a, b] = [await createDesign(payload, category.id), await createDesign(payload, category.id)];
+    const [a, b] = [await createDesign(payload, { rule: "unlimited" }), await createDesign(payload, { rule: "unlimited" })];
     const slot = await createSlot(payload);
 
     const results = await Promise.all([
@@ -155,5 +161,57 @@ describe("website bookings", () => {
 
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(results.find((r) => !r.ok)).toEqual({ ok: false, code: "slot_taken" });
+  });
+
+  it("must name a slot while visitors pick one, though the admin may still leave it for later", async () => {
+    const design = await createDesign(payload, { rule: "unlimited" });
+    const data = { ...customer, design: design.id, status: "pending" } as const;
+
+    await expect(
+      payload.create({ collection: "bookings", data, context: { publicBooking: true } }),
+    ).rejects.toMatchObject({ code: "slot_required", data: { errors: [{ path: "slot", message: "Válassz időpontot." }] } });
+    expect((await payload.create({ collection: "bookings", data })).status).toBe("pending");
+  });
+});
+
+describe("website bookings while visitors don't pick a slot", () => {
+  beforeEach(() => {
+    features.slotPicking = false;
+  });
+
+  it("hold the design without a slot, for the admin to give them one", async () => {
+    const design = await createDesign(payload);
+
+    const result = await createPublicBooking(payload, publicInput(design.id));
+
+    expect(result).toEqual({ ok: true, bookingId: expect.any(Number) });
+    const { docs } = await payload.find({ collection: "bookings", depth: 0, pagination: false });
+    expect(docs).toHaveLength(1);
+    expect(docs[0]).toMatchObject({ status: "pending", seat: 1, design: design.id });
+    expect(docs[0].slot ?? null).toBeNull();
+    expect(docs[0].slotStartsAt ?? null).toBeNull();
+    expect(await createPublicBooking(payload, publicInput(design.id))).toEqual({ ok: false, code: "sold_out" });
+  });
+
+  it("let exactly one of two simultaneous requests take the last booking of a design", async () => {
+    const design = await createDesign(payload);
+
+    const results = await Promise.all([
+      createPublicBooking(payload, publicInput(design.id)),
+      createPublicBooking(payload, publicInput(design.id)),
+    ]);
+
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.find((r) => !r.ok)).toEqual({ ok: false, code: "sold_out" });
+    expect((await payload.count({ collection: "bookings" })).totalDocs).toBe(1);
+  });
+
+  it("book an unlimited design any number of times, none of them holding a slot", async () => {
+    const design = await createDesign(payload, { rule: "unlimited" });
+
+    const results = await Promise.all([1, 2, 3].map(() => createPublicBooking(payload, publicInput(design.id))));
+
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect((await payload.count({ collection: "bookings", where: { slot: { exists: true } } })).totalDocs).toBe(0);
   });
 });

@@ -30,7 +30,8 @@ const logoMask = `url(${logoSrc}) left center / contain no-repeat`;
 
 /** The PANNIPIX wordmark, applied as a mask so it takes the surrounding text colour (ink or paper). */
 export function Logo({ className = "h-8 sm:h-10" }: { className?: string }) {
-  preload(logoSrc, { as: "image" });
+  // CSS masks are fetched in CORS mode; a preload without crossOrigin doesn't match and goes unused.
+  preload(logoSrc, { as: "image", crossOrigin: "anonymous" });
   return (
     <Link href="/#top" aria-label="PANNIPIX – vissza az oldal tetejére" className="block w-fit shrink-0 py-2.5">
       <span

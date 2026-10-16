@@ -31,7 +31,7 @@ export function Footer() {
             </ul>
           </nav>
         </div>
-        <div className="label mt-12 flex flex-col gap-3 text-[0.625rem] text-ash/80 sm:flex-row sm:justify-between">
+        <div className="label mt-12 flex flex-col gap-3 text-[0.6875rem] text-ash/80 sm:flex-row sm:justify-between">
           <p>© 2026 PANNIPIX</p>
           <p className="-my-3 flex gap-6">
             <a href="#" className="inline-flex min-h-11 items-center hover:text-paper active:text-paper">Adatkezelés</a>

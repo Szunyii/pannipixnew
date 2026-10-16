@@ -160,7 +160,7 @@ A dashboardot csak bejelentkezett admin látja (a Payload a widgetet csak bejele
 
 ## 9. Hibakezelés
 
-- Minden widget a saját lekérdezését `try/catch`-ben futtatja. Hibánál a widget helyén egy `Banner` (`type="error"`) áll: „A(z) {widget neve} most nem tölthető be. Töltsd újra az oldalt.”, a dashboard többi része működik. Első betöltéskor a Payload nem fogja meg a widgetek hibáit (csak a szerkesztéskor hozzáadott widgetét), ezért egyetlen hibás lekérdezés az egész nyitó oldalt elvinné.
+- Minden widget a saját lekérdezését `try/catch`-ben futtatja (`loadSafely`). Hibánál a widget címe alatt egy `Banner` (`type="error"`) áll: „Nem sikerült betölteni. Töltsd újra az oldalt.”, a dashboard többi része működik. Első betöltéskor a Payload nem fogja meg a widgetek hibáit (csak a szerkesztéskor hozzáadott widgetét), ezért egyetlen hibás lekérdezés az egész nyitó oldalt elvinné.
 - A naplóba `req.payload.logger.error` kerül a `loggableError()` (`cms/log.ts`) kimenetével és a widget slugjával. A hiba üzenete nem kerül a naplóba: a Drizzle a lekérdezés paramétereit, köztük neveket, fűz hozzá.
 - Hiányzó kép: a `Thumbnail` helyettesítő ikonja. Hiányzó minta: a név a `designName` pillanatképből, kép nélkül. Mintát nem lehet törölni, amíg foglalás hivatkozik rá (`guardDesignDelete`), ez csak biztonsági háló.
 
@@ -179,8 +179,9 @@ A dashboardot csak bejelentkezett admin látja (a Payload a widgetet csak bejele
   - az időpont nélküli jóváhagyott csak az *Időpontra vár* nézetben van;
   - múltbeli időpont nem közelgő;
   - az elkelt minták száma megegyezik azzal, amit az oldal „Elkelt”-nek mutat;
-  - felhasználó nélküli `req`-gel a lekérdezés elutasítva.
-- **Config:**
+  - felhasználó nélküli `req`-gel a lekérdezés elutasítva;
+  - hibás lekérdezésnél a `loadSafely` `null`-t ad, és a naplóba a hiba üzenete nem kerül be.
+- **Config** (`tests/int/dashboard-config.test.ts`):
   - az alapelrendezés minden slugja regisztrált widget;
   - minden widget komponense szerepel az `importMap.js`-ben (elmaradt `generate:importmap` esetén a teszt elbukik);
   - a `collections` widget címkéje „Gyűjtemények”;
@@ -209,4 +210,5 @@ A dashboardot csak bejelentkezett admin látja (a Payload a widgetet csak bejele
 - Az import map generátor a dashboard widgetek komponenseit is felveszi. A hozzáadás listája a widget `label`-jét mutatja, ennek hiányában a slugból képzett nevet (`toWords`).
 - Az admin listanézet a `where` és a `sort` paramétert az URL-ből olvassa (`qs-esm`).
 - `@payloadcms/ui`: a `Pill` (`pillStyle`: `warning`, `success`, `light`, `light-gray`, `dark` …), a `Thumbnail` és a `Banner` (`type`: `error` …) kliens komponens.
+- A `Thumbnail` a dashboardon `min-height: 100%`-ot kap (`.thumbnail:not(.thumbnail--size-none)`), a képe pedig nincs abszolút pozícionálva, így egy álló rajz széthúzná a kártyát. A widget CSS-e ezért rögzített dobozt ad neki (`min-height: 0`), és a képet `position: absolute`-tal teszi rá (próba: 2026-10-16, fej nélküli Chrome).
 - A fejlesztői adatbázisban (2026-10-16) nincs `dashboard-layout` preferencia, 0 foglalás és 23 minta van.

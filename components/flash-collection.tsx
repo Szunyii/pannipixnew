@@ -141,9 +141,10 @@ function Row({ label, heading, designs }: { label: string; heading: string; desi
     el.scrollBy({ left: dir * ((card?.offsetWidth ?? el.clientWidth) + gap), behavior: reduce ? "auto" : "smooth" });
   };
 
+  // Shrinks to its cards when they all fit, so a short row's label lines up with the centred cards.
   return (
-    <section aria-label={`${label} minták`} className="mt-16 first:mt-12 lg:mt-24 lg:first:mt-16">
-      <h3 className="mx-auto max-w-[30rem] text-center font-display text-[clamp(1.75rem,3.2vw,2.6rem)] font-normal leading-[1.1] tracking-[-0.01em]">
+    <section aria-label={`${label} minták`} className="mx-auto mt-16 w-fit max-w-full first:mt-12 lg:mt-24 lg:first:mt-16">
+      <h3 className="mx-auto max-w-[30rem] text-center font-display text-[clamp(1.75rem,3.2vw,2.6rem)] leading-[1.1] tracking-[-0.01em]">
         {heading}
       </h3>
 

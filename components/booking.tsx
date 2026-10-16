@@ -34,8 +34,9 @@ export function Booking() {
 
   return (
     <section id="kapcsolat" data-nav="kapcsolat" aria-labelledby="booking-title" className="surface-ink bg-ink text-paper">
-      <div className={`${container} grid gap-16 py-24 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-24 lg:py-36`}>
-        <div>
+      {/* The photo comes last in the source, so on phones the form follows its heading; from lg it sits under the intro. */}
+      <div className={`${container} grid gap-16 py-24 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-x-24 lg:gap-y-12 lg:py-36`}>
+        <div className="lg:col-start-1 lg:row-start-1">
           <p className="label text-ash">Kapcsolat</p>
           <h2
             id="booking-title"
@@ -61,16 +62,6 @@ export function Booking() {
               </a>
             </li>
           </ul>
-          <figure className="relative mt-12 aspect-[4/3] overflow-hidden rounded-[3px] bg-paper/10">
-            <Image
-              src="/studio/browsing.webp"
-              alt="Egy vendég a PANNIPIX Instagram-oldalát nézegeti a telefonján"
-              fill
-              quality={90}
-              sizes="(min-width: 1024px) 36vw, 90vw"
-              className="object-cover object-[50%_42%]"
-            />
-          </figure>
         </div>
 
         <form
@@ -79,7 +70,7 @@ export function Booking() {
             e.preventDefault();
             setSent(true);
           }}
-          className="lg:pt-3"
+          className="lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:pt-3"
         >
           <p id={formTitleId} className="label text-[0.6875rem] text-ash">Egyedi tetoválás</p>
           <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2">
@@ -139,6 +130,17 @@ export function Booking() {
             </p>
           </div>
         </form>
+
+        <figure className="relative aspect-[4/3] overflow-hidden rounded-[3px] bg-paper/10 lg:col-start-1 lg:row-start-2">
+          <Image
+            src="/studio/browsing.webp"
+            alt="Egy vendég a PANNIPIX Instagram-oldalát nézegeti a telefonján"
+            fill
+            quality={90}
+            sizes="(min-width: 1024px) 36vw, 90vw"
+            className="object-cover object-[50%_42%]"
+          />
+        </figure>
       </div>
     </section>
   );

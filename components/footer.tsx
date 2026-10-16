@@ -12,7 +12,7 @@ const links = [
 
 export function Footer() {
   return (
-    <footer className="bg-ink text-paper">
+    <footer className="surface-ink bg-ink text-paper">
       {/* Bottom padding matches the side gutter, so the wordmark sits in an even frame (plus the home-indicator inset). */}
       <div className={`${container} border-t border-paper/15 pb-[calc(var(--gutter)+env(safe-area-inset-bottom,0px))] pt-12`}>
         <div className="flex flex-col gap-10 lg:flex-row lg:items-end lg:justify-between">

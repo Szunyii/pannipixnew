@@ -33,13 +33,13 @@ export function Booking() {
   const placeId = useId();
 
   return (
-    <section id="kapcsolat" data-nav="kapcsolat" aria-labelledby="booking-title" className="bg-ink text-paper">
+    <section id="kapcsolat" data-nav="kapcsolat" aria-labelledby="booking-title" className="surface-ink bg-ink text-paper">
       <div className={`${container} grid gap-16 py-24 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-24 lg:py-36`}>
         <div>
           <p className="label text-ash">Kapcsolat</p>
           <h2
             id="booking-title"
-            className="mt-5 font-display text-[clamp(2.75rem,5.6vw,5.25rem)] font-normal leading-[0.98] tracking-[-0.025em]"
+            className="mt-5 font-display text-[clamp(2.75rem,5.6vw,5.25rem)] leading-[0.98] tracking-[-0.025em]"
           >
             Kezdjük a te <em>mintáddal.</em>
           </h2>

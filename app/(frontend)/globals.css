@@ -110,12 +110,19 @@ body {
   color: var(--color-paper);
 }
 
-/* In the base layer so a component's focus-visible:/focus: utilities can still override it. */
+/* In the base layer so a component's focus-visible:/focus: utilities can still override it.
+   The ring takes the surface's colour, not the control's: the offset puts it on the page behind,
+   where currentColor would draw paper on paper around an ink button. */
 @layer base {
   :focus-visible {
-    outline: 1.5px solid currentColor;
+    outline: 1.5px solid var(--focus-ring, var(--color-ink));
     outline-offset: 3px;
   }
+}
+
+/* Sections set in ink (contact, footer). */
+@utility surface-ink {
+  --focus-ring: var(--color-paper);
 }
 
 /* Small uppercase label, the voice of the reference's eyebrows and nav */

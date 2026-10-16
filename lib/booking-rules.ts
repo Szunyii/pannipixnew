@@ -82,3 +82,16 @@ export function relationId(value: unknown): number | null {
   if (typeof id === "object" && id !== null && "id" in id) return relationId((id as { id: unknown }).id);
   return null;
 }
+
+/**
+ * How many active bookings each design has, by design id. Released bookings and ones without a usable design don't
+ * count, so a caller may pass every booking or only the active ones; `status` is required so it can't be left out.
+ */
+export function countActiveByDesign(bookings: Iterable<{ design?: unknown; status: string | null | undefined }>) {
+  const counts = new Map<number, number>();
+  for (const { design, status } of bookings) {
+    const id = relationId(design);
+    if (id !== null && isActiveStatus(status)) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
+}

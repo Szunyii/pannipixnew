@@ -2,7 +2,7 @@ import config from "@payload-config";
 import { getPayload } from "payload";
 import { cache } from "react";
 import type { Design } from "@/payload-types";
-import { ACTIVE_STATUSES, availability, relationId } from "./booking-rules";
+import { ACTIVE_STATUSES, availability, countActiveByDesign, relationId } from "./booking-rules";
 import { categoryName } from "./categories";
 import type { DesignImage, FlashDesign } from "./flash-types";
 import { type SlotDay, groupSlotsByDay } from "./time";
@@ -21,18 +21,13 @@ export const getFlashCatalog = cache(async (): Promise<FlashDesign[]> => {
     payload.find({
       collection: "bookings",
       where: { status: { in: [...ACTIVE_STATUSES] } },
-      select: { design: true },
+      select: { design: true, status: true },
       depth: 0,
       pagination: false,
     }),
   ]);
 
-  const counts = new Map<number, number>();
-  for (const booking of active.docs) {
-    const id = relationId(booking.design);
-    if (id !== null) counts.set(id, (counts.get(id) ?? 0) + 1);
-  }
-
+  const counts = countActiveByDesign(active.docs);
   return designs.docs.flatMap((d) => toFlashDesign(d, counts.get(d.id) ?? 0) ?? []);
 });
 

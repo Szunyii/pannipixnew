@@ -105,24 +105,29 @@ body {
   }
 }
 
-::selection {
-  background: var(--color-ink);
-  color: var(--color-paper);
-}
-
-/* In the base layer so a component's focus-visible:/focus: utilities can still override it.
+/* Selection and focus live in the base layer so utilities (surface-ink, focus-visible:, focus:) can override them.
    The ring takes the surface's colour, not the control's: the offset puts it on the page behind,
    where currentColor would draw paper on paper around an ink button. */
 @layer base {
+  ::selection {
+    background: var(--color-ink);
+    color: var(--color-paper);
+  }
+
   :focus-visible {
     outline: 1.5px solid var(--focus-ring, var(--color-ink));
     outline-offset: 3px;
   }
 }
 
-/* Sections set in ink (contact, footer). */
+/* Sections set in ink (contact, footer): the ring and the selection flip to paper. */
 @utility surface-ink {
   --focus-ring: var(--color-paper);
+
+  & ::selection {
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
 }
 
 /* Small uppercase label, the voice of the reference's eyebrows and nav */

@@ -85,7 +85,7 @@ function FlashCard({ design }: { design: FlashDesign }) {
                 onClick={() => setOnSkin((v) => !v)}
                 aria-pressed={onSkin}
                 aria-label={`${name} bőrön`}
-                className={roundBtn}
+                className={`${roundBtn} aria-pressed:bg-ink aria-pressed:text-paper`}
               >
                 <Eye size={19} />
               </button>

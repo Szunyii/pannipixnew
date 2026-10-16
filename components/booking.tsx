@@ -8,7 +8,7 @@ import { ChevronDown, Instagram, Mail } from "./icons";
 import { Arrow, btn, container } from "./ui";
 
 const field =
-  "mt-1.5 block w-full border-0 border-b border-paper/25 bg-transparent pb-3 pt-2 text-[1.0625rem] text-paper placeholder:text-ash/60 transition-colors focus:border-paper focus:outline-none";
+  "mt-1.5 block w-full border-0 border-b border-paper/25 bg-transparent pb-3 pt-2 text-[1.0625rem] text-paper placeholder:text-ash/60 transition-[border-color,box-shadow] focus:border-paper focus:shadow-[0_1px_0_var(--color-paper)] focus:outline-none";
 
 function Field({
   label,

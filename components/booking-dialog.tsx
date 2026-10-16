@@ -33,7 +33,7 @@ const ERROR_TEXT: Record<ErrorCode, string> = {
 };
 
 const field =
-  "mt-1.5 block w-full border-0 border-b border-hairline bg-transparent pb-3 pt-2 text-[1.0625rem] text-ink placeholder:text-ash transition-colors focus:border-ink focus:outline-none aria-invalid:border-ink";
+  "mt-1.5 block w-full border-0 border-b border-hairline bg-transparent pb-3 pt-2 text-[1.0625rem] text-ink placeholder:text-ash transition-[border-color,box-shadow] focus:border-ink focus:shadow-[0_1px_0_var(--color-ink)] focus:outline-none aria-invalid:border-ink";
 
 function ErrorText({ id, children }: { id: string; children?: string }) {
   if (!children) return null;

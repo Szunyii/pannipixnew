@@ -33,6 +33,9 @@
 
 @theme inline {
   --font-display: var(--font-bodoni), "Didot", "Bodoni 72", serif;
+  /* Automatic optical sizing goes up to opsz 96 at headline sizes, where Bodoni's hairlines thin below a screen pixel and drop out.
+     Pinned at 28 they stay visible. The axis is Bodoni-only, so text in other fonts that inherits this ignores it. */
+  --font-display--font-variation-settings: "opsz" 28;
   --font-sans: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -69,6 +72,8 @@ body {
   background: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  /* Both fonts are variable: a touch above regular so the thin strokes hold up. Headings inherit it too. */
+  font-weight: 450;
 }
 
 @layer base {
@@ -105,9 +110,12 @@ body {
   color: var(--color-paper);
 }
 
-:focus-visible {
-  outline: 1.5px solid currentColor;
-  outline-offset: 3px;
+/* In the base layer so a component's focus-visible:/focus: utilities can still override it. */
+@layer base {
+  :focus-visible {
+    outline: 1.5px solid currentColor;
+    outline-offset: 3px;
+  }
 }
 
 /* Small uppercase label, the voice of the reference's eyebrows and nav */
@@ -115,7 +123,7 @@ body {
   font-family: var(--font-sans);
   font-size: 0.75rem;
   line-height: 1.2;
-  font-weight: 400;
+  font-weight: 450;
   letter-spacing: 0.22em;
   text-transform: uppercase;
 }

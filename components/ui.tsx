@@ -13,7 +13,8 @@ const btnBase =
 export const btn = {
   primary: `${btnBase} bg-ink text-paper hover:bg-[#2b2b29]`,
   outline: `${btnBase} border border-ink/70 text-ink hover:bg-ink hover:text-paper`,
-  light: `${btnBase} bg-paper text-ink hover:bg-white`,
+  // Sits on ink: the default currentColor ring would be ink on ink.
+  light: `${btnBase} bg-paper text-ink hover:bg-white focus-visible:outline-paper`,
 };
 
 export function Arrow() {

@@ -18,17 +18,18 @@ export function Hero() {
   return (
     <section id="top" aria-labelledby="hero-title" className="relative isolate overflow-hidden bg-paper">
       <div
-        className={`${container} relative grid gap-y-10 pb-20 pt-10 xl:min-h-[calc(100svh-4.5rem)] xl:grid-cols-[1fr_auto_1fr] xl:grid-rows-[auto_1fr_auto] xl:gap-y-0 xl:pb-12 xl:pt-12`}
+        className={`${container} relative grid gap-y-10 pb-20 pt-10 lg:max-xl:grid-cols-[minmax(0,1fr)_auto] lg:max-xl:gap-x-12 xl:min-h-[calc(100svh-4.5rem)] xl:grid-cols-[1fr_auto_1fr] xl:grid-rows-[auto_1fr_auto] xl:gap-y-0 xl:pb-12 xl:pt-12`}
       >
+        {/* From lg the copy and the art sit side by side, so the CTA stays in the first screen; from xl the three-column composition. */}
         <Axis className="axis-draw inset-y-0 hidden xl:block" />
 
-        <div className="fade-up xl:col-start-1 xl:row-start-1" style={delay(1100)}>
+        <div className="fade-up lg:max-xl:col-start-1 lg:max-xl:row-start-1 xl:col-start-1 xl:row-start-1" style={delay(1100)}>
           <Tags items={["Egyedi tetoválás", "Flash minták"]} className="text-muted" />
         </div>
 
         <h1
           id="hero-title"
-          className="font-display text-[clamp(3.4rem,min(11vw,16svh),6.75rem)] xl:text-[clamp(3.4rem,7.3vw,8.75rem)] font-normal leading-[0.9] tracking-[-0.025em] xl:col-span-3 xl:col-start-1 xl:row-start-2 xl:grid xl:grid-cols-subgrid xl:grid-rows-[auto_1fr_auto] xl:py-10"
+          className="font-display text-[clamp(3.4rem,min(11vw,16svh),6.75rem)] lg:max-xl:col-start-1 lg:max-xl:row-start-2 lg:max-xl:text-[clamp(3.4rem,6.6vw,5.5rem)] xl:text-[clamp(3.4rem,7.3vw,8.75rem)] leading-[0.9] tracking-[-0.025em] xl:col-span-3 xl:col-start-1 xl:row-start-2 xl:grid xl:grid-cols-subgrid xl:grid-rows-[auto_1fr_auto] xl:py-10"
         >
           <span className="block xl:col-start-1 xl:row-start-1 xl:-mr-16 xl:justify-self-end xl:text-right">
             <Line at={250}>Minden</Line>{" "}
@@ -42,7 +43,7 @@ export function Hero() {
           </span>
         </h1>
 
-        <figure className="relative z-10 mx-auto w-[min(76vw,23rem)] md:w-[25rem] mix-blend-multiply xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:w-auto xl:self-center xl:px-2">
+        <figure className="relative z-10 mx-auto w-[min(76vw,23rem)] md:w-[25rem] mix-blend-multiply lg:max-xl:col-start-2 lg:max-xl:row-span-4 lg:max-xl:row-start-1 lg:max-xl:self-center xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:w-auto xl:self-center xl:px-2">
           <div
             className="ink-in relative aspect-[722/926] xl:h-[clamp(24rem,calc(100svh-16rem),42rem)]"
             style={delay(800)}
@@ -70,7 +71,7 @@ export function Hero() {
         </figure>
 
         <div
-          className="fade-up mt-8 max-w-[27rem] xl:col-start-3 xl:row-start-3 xl:mt-0 xl:self-end xl:justify-self-end xl:pl-10"
+          className="fade-up mt-8 max-w-[27rem] lg:max-xl:col-start-1 lg:max-xl:row-start-3 xl:col-start-3 xl:row-start-3 xl:mt-0 xl:self-end xl:justify-self-end xl:pl-10"
           style={delay(1000)}
         >
           <p className="text-[1.0625rem] leading-[1.7] text-graphite">
@@ -87,7 +88,7 @@ export function Hero() {
           </div>
         </div>
 
-        <StyleTags className="fade-up xl:col-start-1 xl:row-start-3 xl:self-end" />
+        <StyleTags className="fade-up lg:max-xl:col-start-1 lg:max-xl:row-start-4 xl:col-start-1 xl:row-start-3 xl:self-end" />
       </div>
     </section>
   );

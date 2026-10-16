@@ -114,7 +114,7 @@ function FlashCard({ design }: { design: FlashDesign }) {
   );
 }
 
-const rowBtn = "flex min-h-11 items-center px-2.5 transition-opacity hover:opacity-60 active:opacity-40";
+const rowBtn = "flex size-11 items-center justify-center transition-opacity hover:opacity-60 active:opacity-40";
 
 /** One collection: its tagline over a row of its designs, dragged sideways on touch and stepped with the arrows. */
 function Row({ label, heading, designs }: { label: string; heading: string; designs: FlashDesign[] }) {
@@ -153,7 +153,7 @@ function Row({ label, heading, designs }: { label: string; heading: string; desi
           {label} · {designs.length} minta
         </p>
         {scrolls && (
-          <div className="-mr-2.5 flex items-center">
+          <div className="-mr-3.5 flex items-center">
             <button type="button" onClick={() => step(-1)} aria-label="Előző minták" className={rowBtn}>
               <ChevronLeft size={16} />
             </button>
@@ -212,7 +212,7 @@ export function FlashCollection({ designs }: { designs: FlashDesign[] }) {
         )}
 
         <p className="mt-14 text-center lg:mt-20">
-          <a href="#info" onClick={showFlashProcess} className="group label inline-flex items-center gap-3 py-3">
+          <a href="#info" onClick={showFlashProcess} className="group label inline-flex min-h-11 items-center gap-3">
             Hogyan működik a flash <Arrow />
           </a>
         </p>

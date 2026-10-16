@@ -52,12 +52,12 @@ export function Booking() {
           </p>
           <ul className="mt-12 space-y-1 border-t border-paper/15 pt-6">
             <li>
-              <a href="https://instagram.com/pannipix" className="inline-flex items-center gap-3.5 py-2 hover:text-ash">
+              <a href="https://instagram.com/pannipix" className="inline-flex min-h-11 items-center gap-3.5 hover:text-ash">
                 <Instagram size={20} /> @pannipix
               </a>
             </li>
             <li>
-              <a href="mailto:hello@pannipix.hu" className="inline-flex items-center gap-3.5 py-2 hover:text-ash">
+              <a href="mailto:hello@pannipix.hu" className="inline-flex min-h-11 items-center gap-3.5 hover:text-ash">
                 <Mail size={20} /> hello@pannipix.hu
               </a>
             </li>

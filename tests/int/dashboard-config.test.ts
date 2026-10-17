@@ -1,23 +1,23 @@
 import { readFileSync } from "node:fs";
+import config from "@payload-config";
 import { initI18n } from "@payloadcms/translations";
 import { hu } from "@payloadcms/translations/languages/hu";
-import type { Payload } from "payload";
+import type { SanitizedConfig } from "payload";
 import { beforeAll, describe, expect, it } from "vitest";
 import { dashboardTranslations } from "@/cms/dashboard/translations";
 import { dashboard } from "@/cms/dashboard/widgets";
-import { getTestPayload } from "../helpers";
 
-let payload: Payload;
+// The built config is all these tests read: no database, no Payload instance.
+let built: SanitizedConfig;
 
 beforeAll(async () => {
-  payload = await getTestPayload();
+  built = await config;
 });
 
 describe("dashboard widgets", () => {
   it("lays out only widgets that are registered, Payload's collection cards included", () => {
-    const registered = new Set(payload.config.admin.dashboard?.widgets.map((widget) => widget.slug));
-    const layout = dashboard.defaultLayout as { widgetSlug: string }[];
-    for (const { widgetSlug } of layout) expect(registered, widgetSlug).toContain(widgetSlug);
+    const registered = new Set(built.admin.dashboard?.widgets.map((widget) => widget.slug));
+    for (const { widgetSlug } of dashboard.defaultLayout) expect(registered, widgetSlug).toContain(widgetSlug);
   });
 
   it("has every widget component in the generated import map", () => {
@@ -31,11 +31,11 @@ describe("dashboard widgets", () => {
   });
 
   it("names Payload's collection cards in Hungarian in the add-widget list", () => {
-    const cards = payload.config.admin.dashboard?.widgets.find((widget) => widget.slug === "collections");
+    const cards = built.admin.dashboard?.widgets.find((widget) => widget.slug === "collections");
     expect(cards?.label).toBe("Gyűjtemények");
   });
 
-  it("leaves the module's own widget list alone, so a config reload can't list Payload's cards twice", () => {
+  it("keeps Payload's own widget out of the module's widget list", () => {
     expect(dashboard.widgets.map((widget) => widget.slug)).not.toContain("collections");
   });
 });
@@ -50,7 +50,7 @@ describe("dashboard translations", () => {
   });
 
   it("reaches the admin's translations", async () => {
-    const i18n = await initI18n({ config: payload.config.i18n, context: "client", language: "hu" });
+    const i18n = await initI18n({ config: built.i18n, context: "client", language: "hu" });
     expect(i18n.t("dashboard:resetLayout")).toBe("Alapelrendezés visszaállítása");
     expect(i18n.t("error:failedToResetLayout")).toBe("Nem sikerült visszaállítani az alapelrendezést.");
     // Strings we don't replace keep Payload's text.

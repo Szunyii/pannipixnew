@@ -3,8 +3,9 @@ import { BOOKING_VIEWS, type BookingView, WIDGET_TITLES } from "@/lib/dashboard"
 
 // Paths are relative to the import map's baseDir (the repo root). After adding or renaming a component here, run
 // `npm run generate:importmap`; `next dev` regenerates it too.
-const bookingList = (slug: string, view: BookingView): Widget => ({
-  slug,
+const bookingList = (view: BookingView): Widget => ({
+  // BookingList logs a failed load under the same name.
+  slug: `${view}-bookings`,
   label: BOOKING_VIEWS[view].title,
   Component: { path: "/cms/dashboard/BookingList#BookingList", serverProps: { view } },
   minWidth: "small",
@@ -15,7 +16,7 @@ const bookingList = (slug: string, view: BookingView): Widget => ({
  * The admin home. Each admin can add, remove, resize and reorder these widgets in the dashboard's edit mode; Payload
  * saves the layout per admin. The default layout is what an admin sees before saving one, and after "reset".
  */
-export const dashboard: DashboardConfig = {
+export const dashboard = {
   widgets: [
     {
       slug: "overview",
@@ -24,10 +25,10 @@ export const dashboard: DashboardConfig = {
       minWidth: "medium",
       maxWidth: "full",
     },
-    bookingList("pending-bookings", "pending"),
-    bookingList("unscheduled-bookings", "unscheduled"),
-    bookingList("upcoming-bookings", "upcoming"),
-    bookingList("recent-bookings", "recent"),
+    bookingList("pending"),
+    bookingList("unscheduled"),
+    bookingList("upcoming"),
+    bookingList("recent"),
     {
       slug: "booked-designs",
       label: WIDGET_TITLES.bookedDesigns,
@@ -46,7 +47,7 @@ export const dashboard: DashboardConfig = {
     // Payload's own collection cards, registered by Payload itself.
     { widgetSlug: "collections", width: "full" },
   ],
-};
+} satisfies DashboardConfig;
 
 /**
  * Payload always appends its collection-cards widget, without a label, so the add-widget list would call it

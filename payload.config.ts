@@ -11,6 +11,8 @@ import { Designs } from "./cms/collections/Designs";
 import { Media } from "./cms/collections/Media";
 import { Slots } from "./cms/collections/Slots";
 import { Users } from "./cms/collections/Users";
+import { dashboardTranslations } from "./cms/dashboard/translations";
+import { dashboard, labelPayloadWidgets } from "./cms/dashboard/widgets";
 import { dataLocation, isProductionRuntime } from "./cms/env";
 import { TIME_ZONE } from "./lib/time";
 import { migrations } from "./migrations";
@@ -44,6 +46,8 @@ export default buildConfig({
     user: Users.slug,
     importMap: { baseDir: path.resolve(dirname) },
     meta: { titleSuffix: " – PANNIPIX" },
+    // The admin home: booking widgets each admin can add, remove, resize and reorder (cms/dashboard/).
+    dashboard,
     timezones: {
       defaultTimezone: TIME_ZONE,
       supportedTimezones: [{ label: "Budapest", value: TIME_ZONE }],
@@ -80,7 +84,7 @@ export default buildConfig({
       })
     : undefined,
   graphQL: { disable: true },
-  i18n: { supportedLanguages: { hu }, fallbackLanguage: "hu" },
+  i18n: { supportedLanguages: { hu }, fallbackLanguage: "hu", translations: { hu: dashboardTranslations } },
   // Under Vitest only warnings and errors print: the console email adapter logs an INFO line per email, and the suite
   // books dozens of times. The destination is Payload's own, so the output keeps its usual look.
   logger: process.env.VITEST ? { options: { level: "warn" }, destination: defaultLoggerOptions } : undefined,
@@ -103,4 +107,4 @@ export default buildConfig({
     // the test file and read the developer's .env. `npm run generate:types` remains the writer for tests.
     autoGenerate: !process.env.VITEST,
   },
-});
+}).then(labelPayloadWidgets);

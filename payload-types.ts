@@ -50,6 +50,12 @@ export interface Config {
   globalsSelect: {};
   locale: null;
   widgets: {
+    overview: OverviewWidget;
+    'pending-bookings': PendingBookingsWidget;
+    'unscheduled-bookings': UnscheduledBookingsWidget;
+    'upcoming-bookings': UpcomingBookingsWidget;
+    'recent-bookings': RecentBookingsWidget;
+    'booked-designs': BookedDesignsWidget;
     collections: CollectionsWidget;
   };
   user: User;
@@ -468,6 +474,66 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
   batch?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "overview_widget".
+ */
+export interface OverviewWidget {
+  data?: {
+    [k: string]: unknown;
+  };
+  width: 'medium' | 'large' | 'x-large' | 'full';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pending-bookings_widget".
+ */
+export interface PendingBookingsWidget {
+  data?: {
+    [k: string]: unknown;
+  };
+  width: 'small' | 'medium' | 'large' | 'x-large' | 'full';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "unscheduled-bookings_widget".
+ */
+export interface UnscheduledBookingsWidget {
+  data?: {
+    [k: string]: unknown;
+  };
+  width: 'small' | 'medium' | 'large' | 'x-large' | 'full';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "upcoming-bookings_widget".
+ */
+export interface UpcomingBookingsWidget {
+  data?: {
+    [k: string]: unknown;
+  };
+  width: 'small' | 'medium' | 'large' | 'x-large' | 'full';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "recent-bookings_widget".
+ */
+export interface RecentBookingsWidget {
+  data?: {
+    [k: string]: unknown;
+  };
+  width: 'small' | 'medium' | 'large' | 'x-large' | 'full';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "booked-designs_widget".
+ */
+export interface BookedDesignsWidget {
+  data?: {
+    [k: string]: unknown;
+  };
+  width: 'medium' | 'large' | 'x-large' | 'full';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

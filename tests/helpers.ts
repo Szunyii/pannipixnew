@@ -83,11 +83,11 @@ export const customer = {
   adultConfirmed: true,
 } as const;
 
-/** Books the way the admin panel does: no website-only rules apply. */
+/** Books the way the admin panel does: no website-only rules apply, and the slot may be left empty (null). */
 export async function createBooking(
   payload: Payload,
   design: number,
-  slot: number,
+  slot: number | null,
   data: { status?: Booking["status"] } = {},
 ) {
   return payload.create({ collection: "bookings", data: { ...customer, design, slot, status: data.status ?? "pending" } });

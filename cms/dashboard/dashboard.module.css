@@ -128,7 +128,7 @@ a.stat:hover {
 
 /* A narrow list (an admin can shrink it to a third): the status goes under the text, the "Mind" link under the
    title. */
-@container (max-width: 320px) {
+@container (max-width: 260px) {
   .header {
     flex-wrap: wrap;
   }
@@ -141,7 +141,7 @@ a.stat:hover {
     flex-basis: calc(100% - 52px);
   }
 
-  .row > :last-child {
+  .status {
     margin-left: 52px;
   }
 }

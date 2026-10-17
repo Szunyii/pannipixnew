@@ -13,7 +13,7 @@ const STATUS_PILLS: Record<BookingStatus, "warning" | "success" | "light" | "lig
 
 export function StatusPill({ status }: { status: BookingStatus }) {
   return (
-    <Pill pillStyle={STATUS_PILLS[status]} size="small">
+    <Pill className={styles.status} pillStyle={STATUS_PILLS[status]} size="small">
       {STATUS_LABELS[status]}
     </Pill>
   );

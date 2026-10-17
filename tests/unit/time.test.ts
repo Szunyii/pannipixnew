@@ -107,7 +107,7 @@ describe("formatReceivedAt", () => {
   it("finds yesterday across a month, a year and the autumn clock change", () => {
     expect(formatReceivedAt("2026-02-28T12:00:00.000Z", "2026-03-01T12:00:00.000Z")).toBe("tegnap 13:00");
     expect(formatReceivedAt("2025-12-31T12:00:00.000Z", "2026-01-01T12:00:00.000Z")).toBe("tegnap 13:00");
-    // 00:10 on 25 October (summer time), seen at 00:30 on the 26th (winter time): 25 hours apart, yet yesterday.
+    // 00:10 on 25 October (summer time), seen at 00:30 on the 26th (winter time): over 25 hours apart, yet yesterday.
     expect(formatReceivedAt("2026-10-24T22:10:00.000Z", "2026-10-25T23:30:00.000Z")).toBe("tegnap 00:10");
   });
 

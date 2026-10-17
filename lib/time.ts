@@ -3,8 +3,8 @@ export const TIME_ZONE = "Europe/Budapest";
 const hu = (options: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat("hu-HU", { timeZone: TIME_ZONE, ...options });
 
-// en-CA on purpose: it formats as YYYY-MM-DD, which zonedTimeToUtc and the seed build dates from and formatReceivedAt
-// reads the year and the day before from. Don't "simplify" it to hu-HU, that gives "2026. 10. 14.".
+// en-CA on purpose: it formats as YYYY-MM-DD. zonedTimeToUtc and the seed build dates from that, and formatReceivedAt
+// takes the year and the day before from it. Don't "simplify" it to hu-HU, that gives "2026. 10. 14.".
 const dayKeyFormat = new Intl.DateTimeFormat("en-CA", {
   timeZone: TIME_ZONE,
   year: "numeric",

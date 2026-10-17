@@ -1,5 +1,4 @@
-import { Banner, Pill, Thumbnail } from "@payloadcms/ui";
-import Link from "next/link";
+import { Banner, Link, Pill, Thumbnail } from "@payloadcms/ui";
 import type { ReactNode } from "react";
 import { type BookingStatus, STATUS_LABELS } from "@/lib/booking-rules";
 import styles from "./dashboard.module.css";
@@ -43,7 +42,7 @@ export function WidgetFrame({
       <header className={styles.header}>
         <h2 className={styles.title}>{title}</h2>
         {link && (
-          <Link className={styles.more} href={link.href}>
+          <Link className={styles.more} href={link.href} prefetch={false}>
             {link.label}
           </Link>
         )}
@@ -57,7 +56,7 @@ export function WidgetFrame({
 export function WidgetError({ title }: { title: string }) {
   return (
     <WidgetFrame title={title}>
-      <Banner type="error">Nem sikerült betölteni. Töltsd újra az oldalt.</Banner>
+      <Banner className={styles.error} type="error">Nem sikerült betölteni. Töltsd újra az oldalt.</Banner>
     </WidgetFrame>
   );
 }

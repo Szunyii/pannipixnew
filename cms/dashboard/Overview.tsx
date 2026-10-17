@@ -1,11 +1,11 @@
-import Link from "next/link";
+import { Link } from "@payloadcms/ui";
 import type { WidgetServerProps } from "payload";
-import { designsUrl, viewListUrl } from "@/lib/dashboard";
+import { WIDGET_TITLES, designsUrl, viewListUrl } from "@/lib/dashboard";
 import styles from "./dashboard.module.css";
 import { loadOverview, loadSafely } from "./data";
 import { WidgetError, WidgetFrame } from "./parts";
 
-const TITLE = "Áttekintés";
+const TITLE = WIDGET_TITLES.overview;
 
 /** Four numbers: what waits for approval, what waits for a slot, what is coming up, and the sold-out designs. */
 export async function Overview({ req }: WidgetServerProps) {
@@ -35,7 +35,7 @@ export async function Overview({ req }: WidgetServerProps) {
           return (
             <li key={label}>
               {value > 0 && href ? (
-                <Link className={styles.stat} href={href}>
+                <Link className={styles.stat} href={href} prefetch={false}>
                   {content}
                 </Link>
               ) : (

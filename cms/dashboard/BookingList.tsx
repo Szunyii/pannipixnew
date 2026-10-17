@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Link } from "@payloadcms/ui";
 import type { WidgetServerProps } from "payload";
 import { BOOKING_VIEWS, type BookingView, bookingUrl, viewListUrl } from "@/lib/dashboard";
 import styles from "./dashboard.module.css";
@@ -28,11 +28,11 @@ export async function BookingList({ req, view }: WidgetServerProps & { view: Boo
         <ul className={styles.rows}>
           {list.rows.map((row) => (
             <li key={row.id}>
-              <Link className={styles.row} href={bookingUrl(adminRoute, row.id)}>
+              <Link className={styles.row} href={bookingUrl(adminRoute, row.id)} prefetch={false}>
                 <DesignImage src={row.image} />
                 <span className={styles.rowText}>
                   <strong>{row.design}</strong>
-                  <span>
+                  <span className={styles.rowMeta}>
                     {row.customer} · {row.when}
                   </span>
                 </span>

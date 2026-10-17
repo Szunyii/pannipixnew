@@ -62,6 +62,9 @@ export const BOOKING_VIEWS: Record<BookingView, BookingViewSpec> = {
   },
 };
 
+/** The headings of the two widgets that aren't booking lists, also their names in the add-widget list. */
+export const WIDGET_TITLES = { overview: "Áttekintés", bookedDesigns: "Lefoglalt minták" } as const;
+
 /** How many designs the "Lefoglalt minták" widget shows. */
 export const BOOKED_DESIGNS_SHOWN = 12;
 

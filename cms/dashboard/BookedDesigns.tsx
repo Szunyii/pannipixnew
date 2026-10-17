@@ -1,12 +1,11 @@
-import { Pill } from "@payloadcms/ui";
-import Link from "next/link";
+import { Link, Pill } from "@payloadcms/ui";
 import type { WidgetServerProps } from "payload";
-import { designBookingsUrl } from "@/lib/dashboard";
+import { WIDGET_TITLES, designBookingsUrl } from "@/lib/dashboard";
 import styles from "./dashboard.module.css";
 import { loadBookedDesigns, loadSafely } from "./data";
 import { DesignImage, EmptyState, WidgetError, WidgetFrame } from "./parts";
 
-const TITLE = "Lefoglalt minták";
+const TITLE = WIDGET_TITLES.bookedDesigns;
 
 /** The designs with active bookings; a card opens that design's bookings. */
 export async function BookedDesigns({ req }: WidgetServerProps) {
@@ -22,7 +21,7 @@ export async function BookedDesigns({ req }: WidgetServerProps) {
         <ul className={styles.cards}>
           {cards.map((card) => (
             <li key={card.id}>
-              <Link className={styles.card} href={designBookingsUrl(adminRoute, card.id)}>
+              <Link className={styles.card} href={designBookingsUrl(adminRoute, card.id)} prefetch={false}>
                 <DesignImage src={card.image} />
                 <strong>{card.name}</strong>
                 <Pill pillStyle={card.soldOut ? "dark" : "light"} size="small">

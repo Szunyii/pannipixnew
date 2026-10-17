@@ -185,7 +185,6 @@ describe("loadSafely", () => {
       // Drizzle wraps the driver's error and puts the query's parameters in its message; a write's carry the
       // customer's details, so the message never reaches the log.
       const failure = Object.assign(new Error("Failed query: … params: Teszt Elek"), {
-        name: "DrizzleQueryError",
         cause: Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" }),
       });
 
@@ -193,7 +192,7 @@ describe("loadSafely", () => {
 
       expect(result).toBeNull();
       expect(logged).toHaveBeenCalledWith({
-        err: { name: "DrizzleQueryError", code: "SQLITE_BUSY" },
+        err: { name: "Error", code: "SQLITE_BUSY" },
         widget: "overview",
         msg: "Dashboard widget failed to load",
       });

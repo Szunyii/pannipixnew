@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   dayKey,
+  formatReceivedAt,
   formatSlotDay,
   formatSlotFull,
   formatSlotTime,
@@ -86,5 +87,25 @@ describe("groupSlotsByDay", () => {
     const before = structuredClone(slots);
     groupSlotsByDay(slots);
     expect(slots).toEqual(before);
+  });
+});
+
+describe("formatReceivedAt", () => {
+  it("says today and yesterday by Budapest days, with the time", () => {
+    // Now is 00:30 on 15 October in Budapest, still the 14th in UTC.
+    expect(formatReceivedAt("2026-10-14T22:10:00.000Z", OCT_15_00_30)).toBe("ma 00:10");
+    expect(formatReceivedAt("2026-10-14T21:50:00.000Z", OCT_15_00_30)).toBe("tegnap 23:50");
+  });
+
+  it("gives an older booking's date, with the year when it is from another year", () => {
+    expect(formatReceivedAt("2026-10-13T08:00:00.000Z", OCT_15_00_30)).toBe("okt. 13.");
+    expect(formatReceivedAt("2025-10-13T08:00:00.000Z", OCT_15_00_30)).toBe("2025. okt. 13.");
+  });
+
+  it("finds yesterday across a month, a year and the autumn clock change", () => {
+    expect(formatReceivedAt("2026-02-28T12:00:00.000Z", "2026-03-01T12:00:00.000Z")).toBe("tegnap 13:00");
+    expect(formatReceivedAt("2025-12-31T12:00:00.000Z", "2026-01-01T12:00:00.000Z")).toBe("tegnap 13:00");
+    // 00:10 on 25 October (summer time), seen at 00:30 on the 26th (winter time): 25 hours apart, yet yesterday.
+    expect(formatReceivedAt("2026-10-24T22:10:00.000Z", "2026-10-25T23:30:00.000Z")).toBe("tegnap 00:10");
   });
 });

@@ -36,6 +36,31 @@ export function formatSlotTitle(value: DateInput) {
   return `${numericDateFormat.format(date)} (${weekdayFormat.format(date)}) ${timeFormat.format(date)}`;
 }
 
+const shortDateFormat = hu({ month: "short", day: "numeric" });
+const shortDateWithYearFormat = hu({ year: "numeric", month: "short", day: "numeric" });
+
+/**
+ * The calendar day before a day key: "2026-03-01" → "2026-02-28". A day key has no time of day, so a clock change
+ * can't shift it.
+ */
+function previousDayKey(key: string) {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * When a booking came in, as the admin dashboard says it: "ma 14:32", "tegnap 19:05", "okt. 13.", or "2025. okt. 13."
+ * from another year. Today and yesterday are Budapest days. `now` comes in so one page renders one moment.
+ */
+export function formatReceivedAt(value: DateInput, now: DateInput) {
+  const day = dayKey(value);
+  const today = dayKey(now);
+  if (day === today) return `ma ${formatSlotTime(value)}`;
+  if (day === previousDayKey(today)) return `tegnap ${formatSlotTime(value)}`;
+  const format = day.slice(0, 4) === today.slice(0, 4) ? shortDateFormat : shortDateWithYearFormat;
+  return format.format(toDate(value));
+}
+
 const offsetFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: TIME_ZONE,
   hourCycle: "h23",

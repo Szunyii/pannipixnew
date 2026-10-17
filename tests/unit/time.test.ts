@@ -100,6 +100,8 @@ describe("formatReceivedAt", () => {
   it("gives an older booking's date, with the year when it is from another year", () => {
     expect(formatReceivedAt("2026-10-13T08:00:00.000Z", OCT_15_00_30)).toBe("okt. 13.");
     expect(formatReceivedAt("2025-10-13T08:00:00.000Z", OCT_15_00_30)).toBe("2025. okt. 13.");
+    // 00:30 on 1 January in Budapest is still 31 December in UTC: the year is Budapest's.
+    expect(formatReceivedAt("2025-12-31T23:30:00.000Z", "2026-03-01T12:00:00.000Z")).toBe("jan. 1.");
   });
 
   it("finds yesterday across a month, a year and the autumn clock change", () => {
@@ -107,5 +109,12 @@ describe("formatReceivedAt", () => {
     expect(formatReceivedAt("2025-12-31T12:00:00.000Z", "2026-01-01T12:00:00.000Z")).toBe("tegnap 13:00");
     // 00:10 on 25 October (summer time), seen at 00:30 on the 26th (winter time): 25 hours apart, yet yesterday.
     expect(formatReceivedAt("2026-10-24T22:10:00.000Z", "2026-10-25T23:30:00.000Z")).toBe("tegnap 00:10");
+  });
+
+  it("finds yesterday next to a 23-hour and a 25-hour day", () => {
+    // 00:30 on 30 March, after the 23-hour 29th: 24 hours earlier is still the 28th.
+    expect(formatReceivedAt("2026-03-29T10:00:00.000Z", "2026-03-29T22:30:00.000Z")).toBe("tegnap 12:00");
+    // 23:30 on 25 October, the 25-hour day: 24 hours earlier is already the 25th.
+    expect(formatReceivedAt("2026-10-24T10:00:00.000Z", "2026-10-25T22:30:00.000Z")).toBe("tegnap 12:00");
   });
 });

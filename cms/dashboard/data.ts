@@ -1,9 +1,10 @@
 import type { PayloadRequest } from "payload";
+import { cache } from "react";
 import { ACTIVE_STATUSES, type BookingStatus, availability, countActiveByDesign } from "@/lib/booking-rules";
 import { categoryName } from "@/lib/categories";
 import { BOOKING_VIEWS, type BookingView, bookedLabel, rankBookedDesigns } from "@/lib/dashboard";
 import { designName } from "@/lib/design-name";
-import type { Design } from "@/payload-types";
+import type { Design, DesignsSelect, MediaSelect } from "@/payload-types";
 import { loggableError } from "../log";
 
 /** Rows on a booking list; the rest are behind its "Mind (N)" link. */
@@ -19,15 +20,22 @@ export type BookingRow = {
   slotStartsAt: string | null;
 };
 
+export type BookingList = { rows: BookingRow[]; total: number };
+
 export type Overview = { pending: number; unscheduled: number; upcoming: number; soldOut: number[] };
 
 export type BookedDesignCard = { id: number; name: string; image: string | null; label: string; soldOut: boolean };
 
-// What a design brings along to the dashboard: its name and its first image.
-const DESIGN_FIELDS = { title: true, category: true, number: true, images: true } as const;
-const IMAGE_FIELDS = { url: true, filename: true, sizes: true } as const;
+// What a design brings along to the dashboard: its name and its first image. `satisfies` catches a misspelt field.
+const DESIGN_FIELDS = {
+  title: true,
+  category: true,
+  number: true,
+  images: true,
+} as const satisfies DesignsSelect<true>;
+const IMAGE_FIELDS = { url: true, filename: true, sizes: true } as const satisfies MediaSelect<true>;
 
-type ShownDesign = Pick<Design, "title" | "category" | "number" | "images">;
+type ShownDesign = Pick<Design, keyof typeof DESIGN_FIELDS>;
 
 const nameOf = (design: ShownDesign) =>
   design.title || designName({ collection: categoryName(design.category), number: design.number });
@@ -53,7 +61,7 @@ export async function loadSafely<T>(req: PayloadRequest, widget: string, load: (
 }
 
 /** One of the four booking lists: its first rows and how many bookings it holds in all. */
-export async function loadBookingView(req: PayloadRequest, view: BookingView, now: Date) {
+export async function loadBookingView(req: PayloadRequest, view: BookingView, now: Date): Promise<BookingList> {
   const { where, sort } = BOOKING_VIEWS[view];
   const { docs, totalDocs } = await req.payload.find({
     collection: "bookings",
@@ -82,7 +90,11 @@ export async function loadBookingView(req: PayloadRequest, view: BookingView, no
   return { rows, total: totalDocs };
 }
 
-async function activeBookings(req: PayloadRequest) {
+/**
+ * Every active booking's design, status and arrival. Completed bookings stay active for good, so this grows with the
+ * studio's history. Cached per request: the overview and the booked designs get the same `req` and share one read.
+ */
+const activeBookings = cache(async (req: PayloadRequest) => {
   const { docs } = await req.payload.find({
     collection: "bookings",
     where: { status: { in: [...ACTIVE_STATUSES] } },
@@ -93,7 +105,7 @@ async function activeBookings(req: PayloadRequest) {
     req,
   });
   return docs;
-}
+});
 
 /** Every design whose rule its active bookings fill, hidden ones too: the site marks the same ones "Elkelt". */
 async function soldOutDesignIds(req: PayloadRequest) {

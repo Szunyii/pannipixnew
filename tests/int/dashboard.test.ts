@@ -4,22 +4,26 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadBookedDesigns, loadBookingView, loadOverview, loadSafely } from "@/cms/dashboard/data";
 import { designsUrl } from "@/lib/dashboard";
 import { getFlashCatalog } from "@/lib/flash";
+import type { User } from "@/payload-types";
 import { createBooking, createDesign, createSlot, getTestPayload, resetDatabase } from "../helpers";
 
 let payload: Payload;
+let admin: User;
 let req: PayloadRequest;
 
 beforeAll(async () => {
   payload = await getTestPayload();
-  const admin = await payload.create({
+  admin = await payload.create({
     collection: "users",
     data: { email: "admin@example.com", password: "dashboard-test-password" },
   });
-  req = await createLocalReq({ user: { ...admin, collection: "users" } }, payload);
 });
 
 beforeEach(async () => {
   await resetDatabase(payload);
+  // A fresh request per test, as every admin page load gets one: a request caches the documents it populates, and the
+  // emptied tables hand the same ids out again.
+  req = await createLocalReq({ user: { ...admin, collection: "users" } }, payload);
 });
 
 // createdAt has millisecond precision; a short pause keeps "oldest first" and "newest first" well defined.
@@ -46,7 +50,8 @@ describe("booking lists", () => {
       status: "pending",
       slotStartsAt: null,
     });
-    expect(rows[0].image).toMatch(/^\/api\/media\/file\/.+/);
+    // The admin's thumbnail (320 px wide), not the full-size upload.
+    expect(rows[0].image).toMatch(/^\/api\/media\/file\/.+-320x\d+\.webp$/);
   });
 
   it("lists confirmed bookings without a slot, and only those", async () => {
@@ -154,7 +159,8 @@ describe("booked designs", () => {
     expect(ids(cards)).toEqual([limited.id, single.id]);
     expect(cards[0]).toMatchObject({ name: "ORNX #002", label: "2 / 3 alkalom", soldOut: false });
     expect(cards[1]).toMatchObject({ name: "P’CONs #027", label: "Elkelt · 1/1", soldOut: true });
-    expect(cards[0].image).toMatch(/^\/api\/media\/file\/.+/);
+    // The admin's thumbnail (320 px wide), not the full-size upload.
+    expect(cards[0].image).toMatch(/^\/api\/media\/file\/.+-320x\d+\.webp$/);
   });
 
   it("is empty while no booking holds a design", async () => {
@@ -175,22 +181,26 @@ describe("access", () => {
 describe("loadSafely", () => {
   it("logs only what is safe to log, and gives the widget null, when a query fails", async () => {
     const logged = vi.spyOn(payload.logger, "error").mockImplementation(() => undefined);
-    // Drizzle puts the query's parameters, a customer's name among them, into its error message.
-    const failure = Object.assign(new Error("Failed query: … params: Teszt Elek"), {
-      name: "LibsqlError",
-      code: "SQLITE_BUSY",
-    });
+    try {
+      // Drizzle wraps the driver's error and puts the query's parameters in its message; a write's carry the
+      // customer's details, so the message never reaches the log.
+      const failure = Object.assign(new Error("Failed query: … params: Teszt Elek"), {
+        name: "DrizzleQueryError",
+        cause: Object.assign(new Error("database is locked"), { code: "SQLITE_BUSY" }),
+      });
 
-    const result = await loadSafely(req, "overview", () => Promise.reject(failure));
+      const result = await loadSafely(req, "overview", () => Promise.reject(failure));
 
-    expect(result).toBeNull();
-    expect(logged).toHaveBeenCalledWith({
-      err: { name: "LibsqlError", code: "SQLITE_BUSY" },
-      widget: "overview",
-      msg: "Dashboard widget failed to load",
-    });
-    expect(JSON.stringify(logged.mock.calls)).not.toContain("Teszt Elek");
-    logged.mockRestore();
+      expect(result).toBeNull();
+      expect(logged).toHaveBeenCalledWith({
+        err: { name: "DrizzleQueryError", code: "SQLITE_BUSY" },
+        widget: "overview",
+        msg: "Dashboard widget failed to load",
+      });
+      expect(JSON.stringify(logged.mock.calls)).not.toContain("Teszt Elek");
+    } finally {
+      logged.mockRestore();
+    }
   });
 
   it("hands the result over when the query works", async () => {

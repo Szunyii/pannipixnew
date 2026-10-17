@@ -46,8 +46,9 @@ export default buildConfig({
     user: Users.slug,
     importMap: { baseDir: path.resolve(dirname) },
     meta: { titleSuffix: " – PANNIPIX" },
-    // The admin home: booking widgets each admin can add, remove, resize and reorder (cms/dashboard/).
-    dashboard,
+    // The admin home: booking widgets each admin can add, remove, resize and reorder (cms/dashboard/). Payload appends
+    // its own widget to the list it gets, so it gets a copy: a config reload in dev would otherwise add it again.
+    dashboard: { ...dashboard, widgets: [...dashboard.widgets] },
     timezones: {
       defaultTimezone: TIME_ZONE,
       supportedTimezones: [{ label: "Budapest", value: TIME_ZONE }],

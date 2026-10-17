@@ -34,6 +34,10 @@ describe("dashboard widgets", () => {
     const cards = payload.config.admin.dashboard?.widgets.find((widget) => widget.slug === "collections");
     expect(cards?.label).toBe("Gyűjtemények");
   });
+
+  it("leaves the module's own widget list alone, so a config reload can't list Payload's cards twice", () => {
+    expect(dashboard.widgets.map((widget) => widget.slug)).not.toContain("collections");
+  });
 });
 
 describe("dashboard translations", () => {

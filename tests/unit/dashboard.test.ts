@@ -122,6 +122,23 @@ describe("rankBookedDesigns", () => {
     ]);
   });
 
+  it("finds a design's latest booking whatever order the bookings come in", () => {
+    // Payload hands them over newest first (the bookings' default sort).
+    const ranked = rankBookedDesigns([
+      booking(1, "confirmed", "2026-10-12T10:00:00.000Z"),
+      booking(1, "completed", "2026-10-01T10:00:00.000Z"),
+    ]);
+    expect(ranked).toEqual([{ id: 1, active: 2, lastBookedAt: "2026-10-12T10:00:00.000Z" }]);
+  });
+
+  it("puts the newer design first when two were last booked at the same moment", () => {
+    const ranked = rankBookedDesigns([
+      booking(3, "pending", "2026-10-15T10:00:00.000Z"),
+      booking(7, "pending", "2026-10-15T10:00:00.000Z"),
+    ]);
+    expect(ranked.map((d) => d.id)).toEqual([7, 3]);
+  });
+
   it("counts each design's active bookings the way the site's sold-out tag does", () => {
     // The cards' "Elkelt · n/m" and the site's "Elkelt" must agree, so the two counts must match.
     const bookings = [
@@ -137,39 +154,53 @@ describe("rankBookedDesigns", () => {
 });
 
 describe("admin links", () => {
+  // The admin parses its list URLs like this (@payloadcms/next, views/Root).
+  const parseAdminQuery = (url: string) => qs.parse(url.split("?")[1] ?? "", { depth: 10, ignoreQueryPrefix: true });
+
   it("writes a filter the way the admin's list view reads it back", () => {
     const url = adminListUrl("/admin", "bookings", {
-      where: { and: [{ status: { equals: "confirmed" } }, { slot: { exists: false } }] },
-      sort: "createdAt",
+      and: [{ status: { equals: "confirmed" } }, { slot: { exists: false } }],
     });
     expect(decodeURIComponent(url)).toBe(
-      "/admin/collections/bookings?where[and][0][status][equals]=confirmed&where[and][1][slot][exists]=false&sort=createdAt",
+      "/admin/collections/bookings?where[and][0][status][equals]=confirmed&where[and][1][slot][exists]=false",
     );
-    // The admin parses its URL with qs-esm; the values come back as strings, which Payload's query reads as usual.
-    const [path, query] = url.split("?");
-    expect(path).toBe("/admin/collections/bookings");
-    expect(qs.parse(query)).toEqual({
+    // The values come back as strings, which Payload's query reads as usual.
+    expect(parseAdminQuery(url)).toEqual({
       where: { and: [{ status: { equals: "confirmed" } }, { slot: { exists: "false" } }] },
-      sort: "createdAt",
     });
   });
 
-  it("narrows the designs list to the given designs", () => {
-    expect(decodeURIComponent(designsUrl("/admin", [3, 7]))).toBe(
-      "/admin/collections/designs?where[id][in][0]=3&where[id][in][1]=7",
-    );
+  it("writes a date as an ISO string", () => {
+    const url = adminListUrl("/admin", "bookings", { slotStartsAt: { greater_than: NOW } });
+    expect(parseAdminQuery(url)).toEqual({ where: { slotStartsAt: { greater_than: "2026-10-16T10:00:00.000Z" } } });
   });
 
-  it("leaves the query off when there is nothing to filter or sort", () => {
-    expect(adminListUrl("/admin", "bookings", { where: {} })).toBe("/admin/collections/bookings");
+  it("leaves the query off when there is nothing to filter", () => {
+    expect(adminListUrl("/admin", "bookings", {})).toBe("/admin/collections/bookings");
+  });
+
+  it("carries no sort, so a link doesn't change the list's saved order", () => {
+    expect(viewListUrl("/admin", "upcoming", NOW)).not.toContain("sort");
+    expect(designBookingsUrl("/admin", 5)).not.toContain("sort");
+  });
+
+  it("narrows the designs list to the given designs, however many", () => {
+    const ids = Array.from({ length: 25 }, (_, i) => i + 1);
+    // An indexed list of more than 21 items would come back as an object, and Payload would drop the filter.
+    expect(parseAdminQuery(designsUrl("/admin", ids) ?? "")).toEqual({ where: { id: { in: ids.join(",") } } });
+    expect(decodeURIComponent(designsUrl("/admin", [3, 7]) ?? "")).toBe("/admin/collections/designs?where[id][in]=3,7");
+  });
+
+  it("has no designs link without designs", () => {
+    expect(designsUrl("/admin", [])).toBeUndefined();
   });
 
   it("links a list's full view, a design's bookings and a booking's page", () => {
     expect(decodeURIComponent(viewListUrl("/admin", "pending", NOW))).toBe(
-      "/admin/collections/bookings?where[status][equals]=pending&sort=createdAt",
+      "/admin/collections/bookings?where[status][equals]=pending",
     );
     expect(decodeURIComponent(designBookingsUrl("/admin", 5))).toBe(
-      "/admin/collections/bookings?where[design][equals]=5&sort=-createdAt",
+      "/admin/collections/bookings?where[design][equals]=5",
     );
     expect(bookingUrl("/admin", 42)).toBe("/admin/collections/bookings/42");
   });

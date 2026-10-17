@@ -14,7 +14,7 @@ export type BookingViewSpec = {
   title: string;
   /** The bookings the list shows. The overview counts the same ones, so its numbers match the lists. */
   where: (now: Date) => Where;
-  /** A Payload sort: the field, "-" in front for newest first. */
+  /** A Payload sort for the widget's own query: the field, "-" in front for newest first. */
   sort: string;
   /** The date a row shows after the customer's name. */
   when: (booking: RowTimes, now: Date) => string;
@@ -106,6 +106,8 @@ export function bookedLabel({ limit, soldOut }: Availability, active: number) {
 function appendQuery(params: URLSearchParams, key: string, value: unknown) {
   if (Array.isArray(value)) {
     value.forEach((item, index) => appendQuery(params, `${key}[${index}]`, item));
+  } else if (value instanceof Date) {
+    params.append(key, value.toISOString());
   } else if (typeof value === "object" && value !== null) {
     for (const [name, item] of Object.entries(value)) appendQuery(params, `${key}[${name}]`, item);
   } else if (value !== undefined) {
@@ -113,34 +115,37 @@ function appendQuery(params: URLSearchParams, key: string, value: unknown) {
   }
 }
 
-/** An admin list view, filtered and sorted. */
-export function adminListUrl(
-  adminRoute: string,
-  collection: "bookings" | "designs",
-  { where, sort }: { where?: Where; sort?: string } = {},
-) {
+/**
+ * An admin list view, filtered. Links carry no sort on purpose: the list saves the sort it was opened with as the
+ * admin's own setting for that list, so a link sorted for one widget would reorder the plain list for good. The filter
+ * isn't saved.
+ */
+export function adminListUrl(adminRoute: string, collection: "bookings" | "designs", where?: Where) {
   const params = new URLSearchParams();
   if (where) appendQuery(params, "where", where);
-  if (sort) params.set("sort", sort);
   const list = formatAdminURL({ adminRoute, path: `/collections/${collection}` });
   const query = params.toString();
   return query ? `${list}?${query}` : list;
 }
 
-/** The bookings list filtered and sorted like one of the dashboard's lists: its "Mind (N)" link and its counter. */
+/** The bookings list filtered like one of the dashboard's lists: its "Mind (N)" link and its counter. */
 export function viewListUrl(adminRoute: string, view: BookingView, now: Date) {
-  const { where, sort } = BOOKING_VIEWS[view];
-  return adminListUrl(adminRoute, "bookings", { where: where(now), sort });
+  return adminListUrl(adminRoute, "bookings", BOOKING_VIEWS[view].where(now));
 }
 
-/** A design's bookings, newest first: where a "Lefoglalt minták" card leads. */
+/** A design's bookings: where a "Lefoglalt minták" card leads. */
 export function designBookingsUrl(adminRoute: string, designId: number) {
-  return adminListUrl(adminRoute, "bookings", { where: { design: { equals: designId } }, sort: "-createdAt" });
+  return adminListUrl(adminRoute, "bookings", { design: { equals: designId } });
 }
 
-/** The designs list narrowed to these designs: where the "Elkelt minta" number leads. */
-export function designsUrl(adminRoute: string, ids: number[]) {
-  return adminListUrl(adminRoute, "designs", { where: { id: { in: ids } } });
+/**
+ * The designs list narrowed to these designs: where the "Elkelt minta" number leads. Undefined without designs: an
+ * empty filter would list them all. The ids go as one comma-separated value, not where[id][in][0]=…: the admin's
+ * query parser (qs-esm) turns an indexed list of more than 21 items into an object, and Payload then drops the filter.
+ */
+export function designsUrl(adminRoute: string, ids: readonly number[]) {
+  if (ids.length === 0) return undefined;
+  return adminListUrl(adminRoute, "designs", { id: { in: ids.join(",") } });
 }
 
 /** A booking's page in the admin. */

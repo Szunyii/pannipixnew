@@ -20,9 +20,12 @@ export function StatusPill({ status }: { status: BookingStatus }) {
   );
 }
 
-/** A design's image. Without one, or when it fails to load, Payload's Thumbnail shows its file icon. */
+/**
+ * A design's image. Without one, or when it fails to load, Payload's Thumbnail shows its file icon. The design's name
+ * is written next to it, so the image is decorative: Thumbnail takes its alt text from `doc.filename`, here empty.
+ */
 export function DesignImage({ src }: { src: string | null }) {
-  return <Thumbnail className={styles.image} fileSrc={src ?? undefined} size="small" />;
+  return <Thumbnail className={styles.image} doc={{ filename: "" }} fileSrc={src ?? undefined} size="small" />;
 }
 
 /** A widget's frame: its heading, a link on the right when there is one, and its content. */

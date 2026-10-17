@@ -8,9 +8,9 @@ import { WidgetError, WidgetFrame } from "./parts";
 const TITLE = WIDGET_TITLES.overview;
 
 /** Four numbers: what waits for approval, what waits for a slot, what is coming up, and the sold-out designs. */
-export async function Overview({ req }: WidgetServerProps) {
+export async function Overview({ req, widgetSlug }: WidgetServerProps) {
   const now = new Date();
-  const overview = await loadSafely(req, "overview", () => loadOverview(req, now));
+  const overview = await loadSafely(req, widgetSlug, () => loadOverview(req, now));
   if (!overview) return <WidgetError title={TITLE} />;
 
   const adminRoute = req.payload.config.routes.admin;

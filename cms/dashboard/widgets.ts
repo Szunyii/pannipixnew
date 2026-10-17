@@ -4,7 +4,7 @@ import { BOOKING_VIEWS, type BookingView, WIDGET_TITLES } from "@/lib/dashboard"
 // Paths are relative to the import map's baseDir (the repo root). After adding or renaming a component here, run
 // `npm run generate:importmap`; `next dev` regenerates it too.
 const bookingList = (view: BookingView): Widget => ({
-  // BookingList logs a failed load under the same name.
+  // One widget per view, named after it.
   slug: `${view}-bookings`,
   label: BOOKING_VIEWS[view].title,
   Component: { path: "/cms/dashboard/BookingList#BookingList", serverProps: { view } },

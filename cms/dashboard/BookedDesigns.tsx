@@ -8,8 +8,8 @@ import { DesignImage, EmptyState, WidgetError, WidgetFrame } from "./parts";
 const TITLE = WIDGET_TITLES.bookedDesigns;
 
 /** The designs with active bookings; a card opens that design's bookings. */
-export async function BookedDesigns({ req }: WidgetServerProps) {
-  const cards = await loadSafely(req, "booked-designs", () => loadBookedDesigns(req));
+export async function BookedDesigns({ req, widgetSlug }: WidgetServerProps) {
+  const cards = await loadSafely(req, widgetSlug, () => loadBookedDesigns(req));
   if (!cards) return <WidgetError title={TITLE} />;
 
   const adminRoute = req.payload.config.routes.admin;

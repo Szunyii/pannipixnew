@@ -64,7 +64,7 @@ Egy sor: a minta képe, a minta neve, a foglaló neve és egy dátum, jobb oldal
 | `recent` | minden állapot | beérkezés, a legfrissebb felül | „ma 14:32” | Még nincs foglalás. |
 
 - A két teendőlistában azért van a legrégebbi felül, mert ezeket sorban érdemes intézni.
-- Az *Időpontra vár* nem tartalmazza a függő foglalásokat (azok a *Jóváhagyásra vár* listában vannak), így semmi sem számít kétszer.
+- Az *Időpontra vár* nem tartalmazza a függő foglalásokat (azok a *Jóváhagyásra vár* listában vannak), így a két teendőlista nem tartalmazza kétszer ugyanazt a foglalást.
 - A beérkezés dátuma: „ma 14:32”, „tegnap 19:05”, egyébként „okt. 13.”, más évben „2025. okt. 13.”; budapesti idő szerint.
 - Az időpont a foglalás pillanatképe (`slotStartsAt`). Aktív foglalás időpontjának kezdése nem változhat (`guardSlotTimeChange`), ezért ez megbízható.
 - A minta neve a betöltött mintáé (`P’CONs #027`). Ha a minta nem töltődik be, a foglalás pillanatképe (`designName`) áll a helyén.
@@ -106,7 +106,7 @@ Ezt látja az admin, amíg nem mentett saját elrendezést, és ide tér vissza 
 
 ## 5. Szerkesztés
 
-A Payload kész szerkesztő módját használjuk, nem írunk sajátot. A felső sáv „Irányítópult” menüjéből indul: widget hozzáadása listából, törlése, átméretezése a saját legkisebb és legnagyobb mérete között, áthúzása, mentés vagy elvetés, illetve az alapelrendezés visszaállítása. Az elrendezés a Payload `payload-preferences` gyűjteményébe kerül, adminonként. Szerkesztés közben hozzáadott widget a legkisebb méretén indul; ezért minden widget a saját szélességéhez igazodik (CSS container query vagy `auto-fit` rács), nem a képernyőéhez. Egy 260 px-nél keskenyebb listában az állapot a szöveg alá, a „Mind (N) →” a cím alá kerül. Az átméretezés választójában a szélességek angol neve látszik (`small` … `full`, százalékkal); ezekhez a Payloadnak nincs fordítási kulcsa.
+A Payload kész szerkesztő módját használjuk, nem írunk sajátot. A felső sáv „Irányítópult” menüjéből indul: widget hozzáadása listából, törlése, átméretezése a saját legkisebb és legnagyobb mérete között, áthúzása, mentés vagy elvetés, illetve az alapelrendezés visszaállítása. Az elrendezés a Payload `payload-preferences` gyűjteményébe kerül, adminonként. Szerkesztés közben hozzáadott widget a legkisebb méretén indul; ezért minden widget a saját szélességéhez igazodik (CSS container query vagy `auto-fill` rács), nem a képernyőéhez. Egy 260 px-nél keskenyebb listában az állapot a szöveg alá, a „Mind (N) →” a cím alá kerül. Az átméretezés választójában a szélességek angol neve látszik (`small` … `full`, százalékkal); ezekhez a Payloadnak nincs fordítási kulcsa.
 
 Ha egy admin már mentett saját elrendezést, az új widgetek nem jelennek meg nála maguktól: hozzáadhatja őket, vagy visszaállíthatja az alapelrendezést. A fejlesztői adatbázisban 2026-10-16-án nincs mentett elrendezés.
 
@@ -139,7 +139,7 @@ payload-types.ts         újragenerálva (npm run generate:types)
   - Áttekintés: három `count`, plusz az elkelt minták: a minták szabálya és az aktív foglalások mintánkénti száma (`countActiveByDesign`), majd `availability()`.
   - Lefoglalt minták: az aktív foglalások mintája és beérkezése, mintánként csoportosítva (darab, utolsó beérkezés), az első 12 minta egy `find`-dal.
 - **Tiszta függvények** (`lib/dashboard.ts`): a négy nézet leírása (szűrés a „most”-tól függően, rendezés, dátum fajtája, üres szöveg); a mintacímke („Elkelt · 1/1”, „2 / 3 alkalom”, „4 foglalás”); a lefoglalt minták csoportosítása és sorrendje; a szűrt admin listák linkje (`/admin/collections/bookings?where[status][equals]=pending`, rendezés nélkül), az admin útvonalát a config `routes.admin`-jából véve. A közelgő nézet linkjében a „most” a renderelés ideje. Az elkelt minták linkje az `id`-kat egyetlen, vesszővel elválasztott értékként adja át, üres listánál nincs link.
-- **Közös számlálás.** A mintánkénti aktív foglalásszámlálás most a `lib/flash.ts` `getFlashCatalog` függvényében van. Átkerül a `lib/booking-rules.ts`-be (`countActiveByDesign`), és az oldal meg a dashboard is ezt használja, így az „Elkelt” mindkét helyen ugyanazt jelenti.
+- **Közös számlálás.** A mintánkénti aktív foglalásszámlálás korábban a `lib/flash.ts` `getFlashCatalog` függvényében volt; átkerült a `lib/booking-rules.ts`-be (`countActiveByDesign`), és az oldal meg a dashboard is ezt használja, így az „Elkelt” mindkét helyen ugyanazt jelenti.
 - **Adatbázis.** Gyűjtemény nem változik: nincs migráció, és a futó `next dev` sem kérdez a sémáról. Az elrendezés a Payload meglévő `payload_preferences` táblájába kerül.
 
 ## 7. Szövegek

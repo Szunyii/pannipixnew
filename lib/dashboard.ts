@@ -38,7 +38,7 @@ export const BOOKING_VIEWS: Record<BookingView, BookingViewSpec> = {
   },
   unscheduled: {
     title: "Időpontra vár",
-    // Pending bookings have no slot yet either; they wait in the list above, so nothing is counted twice.
+    // Pending bookings can lack a slot too; they wait in the list above, so the two to-do lists never share a booking.
     where: () => allOf({ status: { equals: "confirmed" } }, { slot: { exists: false } }),
     sort: "createdAt",
     when: received,

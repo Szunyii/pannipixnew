@@ -20,9 +20,9 @@ export type BookingRow = {
   slotStartsAt: string | null;
 };
 
-export type BookingList = { rows: BookingRow[]; total: number };
+export type BookingListData = { rows: BookingRow[]; total: number };
 
-export type Overview = { pending: number; unscheduled: number; upcoming: number; soldOut: number[] };
+export type OverviewData = { pending: number; unscheduled: number; upcoming: number; soldOut: number[] };
 
 export type BookedDesignCard = { id: number; name: string; image: string | null; label: string; soldOut: boolean };
 
@@ -49,7 +49,8 @@ function thumbnailOf(design: ShownDesign) {
 
 /**
  * Runs a widget's query. On failure it logs what is safe to log (cms/log.ts) and returns null, so the widget can show
- * an error in its place: Payload doesn't catch a widget's error on first render, and the whole dashboard would fail.
+ * an error in its place: Payload catches a widget's error neither on first render nor when it is added in edit mode,
+ * and the whole dashboard would fail.
  */
 export async function loadSafely<T>(req: PayloadRequest, widget: string, load: () => Promise<T>): Promise<T | null> {
   try {
@@ -61,7 +62,7 @@ export async function loadSafely<T>(req: PayloadRequest, widget: string, load: (
 }
 
 /** One of the four booking lists: its first rows and how many bookings it holds in all. */
-export async function loadBookingView(req: PayloadRequest, view: BookingView, now: Date): Promise<BookingList> {
+export async function loadBookingView(req: PayloadRequest, view: BookingView, now: Date): Promise<BookingListData> {
   const { where, sort } = BOOKING_VIEWS[view];
   const { docs, totalDocs } = await req.payload.find({
     collection: "bookings",
@@ -125,7 +126,7 @@ async function soldOutDesignIds(req: PayloadRequest) {
 }
 
 /** The overview's numbers. The three booking counts use the lists' own filters. */
-export async function loadOverview(req: PayloadRequest, now: Date): Promise<Overview> {
+export async function loadOverview(req: PayloadRequest, now: Date): Promise<OverviewData> {
   const count = async (view: BookingView) => {
     const { totalDocs } = await req.payload.count({
       collection: "bookings",

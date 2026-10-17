@@ -6,11 +6,11 @@ import { loadBookingView, loadSafely } from "./data";
 import { DesignImage, EmptyState, StatusPill, WidgetError, WidgetFrame } from "./parts";
 
 /** One of the four booking lists. Which one comes from its registration in cms/dashboard/widgets.ts (serverProps). */
-export async function BookingList({ req, view }: WidgetServerProps & { view: BookingView }) {
+export async function BookingList({ req, view, widgetSlug }: WidgetServerProps & { view: BookingView }) {
   const spec = BOOKING_VIEWS[view];
   const now = new Date();
   // The row dates are written inside loadSafely too, so nothing in this widget can fail outside it.
-  const list = await loadSafely(req, `${view}-bookings`, async () => {
+  const list = await loadSafely(req, widgetSlug, async () => {
     const { rows, total } = await loadBookingView(req, view, now);
     return { total, rows: rows.map((row) => ({ ...row, when: spec.when(row, now) })) };
   });

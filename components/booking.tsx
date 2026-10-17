@@ -40,7 +40,7 @@ export function Booking() {
           <p className="label text-ash">Kapcsolat</p>
           <h2
             id="booking-title"
-            className="mt-5 font-display text-[clamp(2.75rem,5.6vw,5.25rem)] leading-[0.98] tracking-[-0.025em]"
+            className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] leading-[1] tracking-[-0.02em]"
           >
             Kezdjük a te <em>mintáddal.</em>
           </h2>

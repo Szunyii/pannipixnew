@@ -27,9 +27,10 @@ export function Hero() {
           <Tags items={["Egyedi tetoválás", "Flash minták"]} className="text-muted" />
         </div>
 
+        {/* One scale across the three layouts: no jump at lg or xl, and capped at 1.5× the section headings (4.5rem). */}
         <h1
           id="hero-title"
-          className="font-display text-[clamp(3.4rem,min(11vw,16svh),6.75rem)] lg:max-xl:col-start-1 lg:max-xl:row-start-2 lg:max-xl:text-[clamp(3.4rem,6.6vw,5.5rem)] xl:text-[clamp(3.4rem,7.3vw,8.75rem)] leading-[0.9] tracking-[-0.025em] xl:col-span-3 xl:col-start-1 xl:row-start-2 xl:grid xl:grid-cols-subgrid xl:grid-rows-[auto_1fr_auto] xl:py-10"
+          className="font-display text-[clamp(3.4rem,min(11vw,16svh),5.25rem)] lg:max-xl:col-start-1 lg:max-xl:row-start-2 lg:max-xl:text-[clamp(3.4rem,min(8.2vw,10.2svh),5.5rem)] xl:text-[clamp(3.4rem,7.3vw,7rem)] leading-[0.9] tracking-[-0.025em] xl:col-span-3 xl:col-start-1 xl:row-start-2 xl:grid xl:grid-cols-subgrid xl:grid-rows-[auto_1fr_auto] xl:py-10"
         >
           <span className="block xl:col-start-1 xl:row-start-1 xl:-mr-16 xl:justify-self-end xl:text-right">
             <Line at={250}>Minden</Line>{" "}

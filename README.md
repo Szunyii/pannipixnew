@@ -46,6 +46,13 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 - **E-mailek:** az `ADMIN_EMAIL` címre minden, az oldalon beküldött foglalásról levél érkezik. Az ügyfél a beérkezésről, a jóváhagyásról (a levél tárgya: „Visszaigazolva: …”), az elutasításról és a lemondásról kap levelet. Az időpont akkor szerepel a levelekben, ha a foglalásnak már van: ha a jóváhagyással egy mentésben adod meg, a visszaigazolás már tartalmazza; különben a levél azt írja, hogy az időpontot válaszlevélben egyeztetitek. Az időpont utólagos megadásáról vagy cseréjéről nem megy külön levél.
 - **Időpontválasztó:** az oldali időpontválasztó ki van kapcsolva; a `lib/features.ts` `SLOT_PICKING` konstansa kapcsolja. `true` értékkel a foglalási ablak első lépése újra az időpontválasztás, az űrlap megköveteli az időpontot, és az oldal meg a levelek szövege is visszaáll (az admin oldalon az időpont ekkor sem kötelező). Átállítás után futtasd az `npm run generate:types` parancsot, mert az admin leírások a `payload-types.ts` megjegyzéseibe is bekerülnek.
 
+## Az admin nyitó oldala
+
+Az `/admin` nyitó oldalán foglalási widgetek vannak: *Áttekintés* (négy számláló), *Jóváhagyásra vár*, *Időpontra vár*, *Közelgő időpontok*, *Legutóbbi foglalások* és *Lefoglalt minták*, alattuk a gyűjtemények kártyái. Egy számláló, egy sor vagy egy minta a hozzá tartozó szűrt listát vagy a foglalást nyitja meg. A szűrt lista a *Foglalások* lista megszokott sorrendjében jelenik meg: a link csak szűr, a lista rendezését nem állítja át. Az adatok az oldal betöltésekor frissülnek.
+
+- **Elrendezés:** a felső sáv *Irányítópult* menüjében válaszd az *Irányítópult szerkesztése* lehetőséget. A *Hozzáadás +* gombbal widgetet adhatsz hozzá, a meglévőket törölheted, átméretezheted és áthúzhatod; a *Módosítások mentése* adminonként menti az elrendezést. Az *Alapelrendezés visszaállítása* az eredetit hozza vissza.
+- **Új widget a kódban:** a widgeteket és az alapelrendezést a `cms/dashboard/widgets.ts` sorolja fel. Új vagy átnevezett komponens után futtasd az `npm run generate:importmap` és az `npm run generate:types` parancsot. Akinek már van mentett elrendezése, annál az új widget nem jelenik meg magától: hozzá kell adnia, vagy vissza kell állítania az alapelrendezést.
+
 ## Élesítés (Hostinger, Node.js alkalmazás)
 
 Ez a lista az első élesítés lépéseit adja. Későbbi deployoknál (főleg új migrációnál) előbb olvasd el a [Biztonságos üzemeltetés](#biztonságos-üzemeltetés) szakaszt: mentés, és a migráció kipróbálása az éles adatbázis másolatán.

@@ -142,9 +142,10 @@ export function designBookingsUrl(adminRoute: string, designId: number) {
 }
 
 /**
- * The designs list narrowed to these designs: where the "Elkelt minta" number leads. Undefined without designs: an
- * empty filter would list them all. The ids go as one comma-separated value, not where[id][in][0]=…: the admin's
- * query parser (qs-esm) turns an indexed list of more than 21 items into an object, and Payload then drops the filter.
+ * The designs list narrowed to these designs: where the "Elkelt minta" number leads. Undefined without designs: there
+ * is nothing to list, and an empty value would fail the list's query. The ids go as one comma-separated value, not
+ * where[id][in][0]=…: the admin's query parser (qs-esm) turns an indexed list of more than 21 items into an object,
+ * and Payload then drops the filter.
  */
 export function designsUrl(adminRoute: string, ids: readonly number[]) {
   if (ids.length === 0) return undefined;

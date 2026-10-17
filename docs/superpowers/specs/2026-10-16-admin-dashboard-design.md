@@ -1,7 +1,15 @@
 # Admin nyitó oldal: foglalási dashboard — tervdokumentum
 
-**Dátum:** 2026-10-16 · **Állapot:** jóváhagyásra vár · **Alap:** a `feature/payload-flash-booking` ág jelenlegi állapota
+**Dátum:** 2026-10-16 · **Állapot:** megvalósítva (2026-10-17, `feature/admin-dashboard`) · **Alap:** a `feature/payload-flash-booking` ág akkori állapota
 **Kiinduló állapot:** Payload 3.90.2 (pontosan rögzítve), Next 16.3.8, magyar admin. A `/admin` nyitó oldalán ma egyetlen widget van, a Payload gyűjteménykártyái.
+
+> **Módosítva 2026-10-17 (megvalósítás):** a kódreview-k és a böngészős próba nyomán néhány ponton eltér a fenti tervtől. Ezeket a szakaszokban helyben javítottam:
+> - **A linkek nem visznek rendezést (3.1–3.3, 6.).** A Payload listanézete a kapott rendezést az admin saját beállításaként menti, így egy widget linkje tartósan átrendezné a *Foglalások* listát. A szűrt lista ezért a megszokott sorrendjében nyílik.
+> - **Az „Elkelt minta” linkje (3.1, 6., 12.)** egyetlen, vesszővel elválasztott `id` listát ad át, mert a `qs-esm` 21 elemnél hosszabb indexelt listát objektummá alakít.
+> - **Szerkesztő mód (7.):** három szöveg pontosabb lett.
+> - **Hibakezelés (9., 12.):** a sorok dátumszövege is a `loadSafely`-n belül készül. A Payload egyik úton sem fogja meg a widget aszinkron hibáját.
+> - **Akadálymentesség és elrendezés (6.):** látható fókuszkeret, jobb kontraszt, keskeny listák 260 px alatt.
+> - **Tesztek (10.):** a widgetek renderelési tesztet is kaptak.
 
 ## 1. Cél
 
@@ -37,16 +45,16 @@ Négy számláló egy sorban; a widget szűkebb szélességén kettő-kettő egy
 
 | Számláló | Mit számol | Hová visz |
 |---|---|---|
-| Jóváhagyásra vár | *Függőben* foglalások | a foglaláslista, erre szűrve, a legrégebbi felül |
-| Időpontra vár | *Jóváhagyva* foglalások időpont nélkül | a foglaláslista, erre szűrve, a legrégebbi felül |
-| Közelgő időpont | *Függőben* vagy *Jóváhagyva* foglalások, amelyek időpontja (`slotStartsAt`) a jövőben van | a foglaláslista, erre szűrve, a legközelebbi felül |
-| Elkelt minta | minták, amelyeknek a foglalhatósága betelt, a rejtetteket is beleértve; ugyanaz a számítás, mint az oldal „Elkelt” címkéjénél (`availability()`) | a Flash minták listája, ezekre a mintákra szűrve (`id` in) |
+| Jóváhagyásra vár | *Függőben* foglalások | a foglaláslista, erre szűrve |
+| Időpontra vár | *Jóváhagyva* foglalások időpont nélkül | a foglaláslista, erre szűrve |
+| Közelgő időpont | *Függőben* vagy *Jóváhagyva* foglalások, amelyek időpontja (`slotStartsAt`) a jövőben van | a foglaláslista, erre szűrve |
+| Elkelt minta | minták, amelyeknek a foglalhatósága betelt, a rejtetteket is beleértve; ugyanaz a számítás, mint az oldal „Elkelt” címkéjénél (`availability()`) | a Flash minták listája, ezekre a mintákra szűrve (`id` in, egy vesszővel elválasztott értékként) |
 
-A 0 értékű számláló nem link.
+A 0 értékű számláló nem link. A linkek csak szűrnek, rendezést nem visznek: a lista a megszokott (mentett) sorrendjében nyílik.
 
 ### 3.2 A négy foglaláslista
 
-Egy sor: a minta képe, a minta neve, a foglaló neve és egy dátum, jobb oldalt az állapot. A sor a foglalás szerkesztő oldalára visz. Egy lista legfeljebb 5 sort mutat, alatta „Mind (N) →” link vezet a foglaláslistára ugyanazzal a szűréssel és rendezéssel (csak ha N > 0). A foglalónak csak a neve látszik, az e-mail címe és a telefonszáma nem.
+Egy sor: a minta képe, a minta neve, a foglaló neve és egy dátum, jobb oldalt az állapot. A sor a foglalás szerkesztő oldalára visz. Egy lista legfeljebb 5 sort mutat, a címe mellett „Mind (N) →” link vezet a foglaláslistára ugyanazzal a szűréssel, rendezés nélkül (csak ha N > 0). A foglalónak csak a neve látszik, az e-mail címe és a telefonszáma nem.
 
 | Nézet | Szűrés | Rendezés | Dátum a sorban | Üres állapot |
 |---|---|---|---|---|
@@ -77,7 +85,7 @@ Egy sor: a minta képe, a minta neve, a foglaló neve és egy dátum, jobb oldal
   - betelt: „Elkelt · 1/1” (`dark`); a szám az aktív foglalások és a limit, akkor is, ha a limitet utólag a foglalások száma alá vették („Elkelt · 4/3”);
   - limitált, van még hely: „2 / 3 alkalom” (`light`), azaz aktív foglalások / limit;
   - korlátlan: „4 foglalás” (`light`), az aktív foglalások száma.
-- A kártya a foglaláslistára visz, a mintára szűrve, a legfrissebb felül.
+- A kártya a foglaláslistára visz, a mintára szűrve.
 - Üres állapot: „Még nincs lefoglalt minta.”
 
 ### 3.4 Gyűjtemények
@@ -98,7 +106,7 @@ Ezt látja az admin, amíg nem mentett saját elrendezést, és ide tér vissza 
 
 ## 5. Szerkesztés
 
-A Payload kész szerkesztő módját használjuk, nem írunk sajátot. A felső sáv „Irányítópult” menüjéből indul: widget hozzáadása listából, törlése, átméretezése a saját legkisebb és legnagyobb mérete között, áthúzása, mentés vagy elvetés, illetve az alapelrendezés visszaállítása. Az elrendezés a Payload `payload-preferences` gyűjteményébe kerül, adminonként. Szerkesztés közben hozzáadott widget a legkisebb méretén indul; ezért minden widget a saját szélességéhez igazodik (CSS container query vagy `auto-fit` rács), nem a képernyőéhez.
+A Payload kész szerkesztő módját használjuk, nem írunk sajátot. A felső sáv „Irányítópult” menüjéből indul: widget hozzáadása listából, törlése, átméretezése a saját legkisebb és legnagyobb mérete között, áthúzása, mentés vagy elvetés, illetve az alapelrendezés visszaállítása. Az elrendezés a Payload `payload-preferences` gyűjteményébe kerül, adminonként. Szerkesztés közben hozzáadott widget a legkisebb méretén indul; ezért minden widget a saját szélességéhez igazodik (CSS container query vagy `auto-fit` rács), nem a képernyőéhez. Egy 260 px-nél keskenyebb listában az állapot a szöveg alá, a „Mind (N) →” a cím alá kerül. Az átméretezés választójában a szélességek angol neve látszik (`small` … `full`, százalékkal); ezekhez a Payloadnak nincs fordítási kulcsa.
 
 Ha egy admin már mentett saját elrendezést, az új widgetek nem jelennek meg nála maguktól: hozzáadhatja őket, vagy visszaállíthatja az alapelrendezést. A fejlesztői adatbázisban 2026-10-16-án nincs mentett elrendezés.
 
@@ -107,13 +115,14 @@ Ha egy admin már mentett saját elrendezést, az új widgetek nem jelennek meg 
 ```
 cms/dashboard/
   widgets.ts             a widgetek és az alapelrendezés (admin.dashboard); a Gyűjtemények címkéje
-  data.ts                Local API lekérdezések a bejelentkezett admin req-jével
+  translations.ts        a Payload magyar dashboard-szövegeinek felülírása
+  data.ts                Local API lekérdezések a bejelentkezett admin req-jével; loadSafely
   Overview.tsx           Áttekintés
   BookingList.tsx        a négy foglaláslista; a nézetet a regisztráció adja (serverProps.view)
   BookedDesigns.tsx      Lefoglalt minták
-  parts.tsx              közös darabok: mintakép, állapot, hibaüzenet
+  parts.tsx              közös darabok: keret, mintakép, állapot, hibaüzenet, üres állapot
   dashboard.module.css
-lib/dashboard.ts         tiszta függvények: nézetek, címkék, linkek
+lib/dashboard.ts         tiszta függvények: nézetek, widgetcímek, címkék, linkek
 lib/time.ts              + a beérkezés dátuma („ma 14:32”, „tegnap”, „okt. 13.”)
 lib/booking-rules.ts     + countActiveByDesign(), a lib/flash.ts-ből áthozva
 payload.config.ts        admin.dashboard, i18n.translations.hu, a Gyűjtemények címkéje
@@ -121,15 +130,15 @@ app/(payload)/admin/importMap.js   újragenerálva (npm run generate:importmap)
 payload-types.ts         újragenerálva (npm run generate:types)
 ```
 
-- **Regisztráció.** A négy lista ugyanaz a komponens: `Component: { path: "/cms/dashboard/BookingList#BookingList", serverProps: { view: "pending" } }`, és így tovább. A Payload a `serverProps`-ot a szerverkomponens propjaihoz fűzi.
-- **Szerverkomponensek.** Mindhárom aszinkron szerverkomponens; a Payload a `req`-et, a `user`-t és a `locale`-t adja nekik. A „most” időpontot renderenként egyszer veszik, és paraméterként adják tovább, így a tiszta függvények tesztelhetők.
-- **Payload UI-elemek.** `Pill` (állapot, Elkelt), `Thumbnail` (a minta képe; ha nincs kép, a Payload saját helyettesítő ikonja), `Banner` (hiba). Kliens komponensek, a szerverkomponens szerializálható propokat ad nekik. A számlálók és a mintakártyák saját markupot kapnak.
-- **Stílus.** Egy CSS Module (`dashboard.module.css`) a Payload témaváltozóival (`--theme-elevation-*`, `--base`, `--style-radius-*`), így a világos és a sötét admin téma magától működik. Az adminban nincs Tailwind.
-- **Lekérdezések** (`data.ts`). A Local API-t a widget `req`-jével és `overrideAccess: false`-szal hívják, így a gyűjtemények jogosultsága érvényes. Csak a szükséges mezőket kérik le (`select`, `populate`); a kép a minta első képének `thumbnail` mérete, ennek hiányában az eredeti.
+- **Regisztráció.** A négy lista ugyanaz a komponens: `Component: { path: "/cms/dashboard/BookingList#BookingList", serverProps: { view: "pending" } }`, és így tovább; a slug a nézetből képződik (`pending-bookings`), a hibanapló is ezt a nevet írja. A Payload a `serverProps`-ot a szerverkomponens propjaihoz fűzi. A config a widgetlista másolatát kapja, mert a Payload a kapott tömbbe fűzi a saját widgetjét. A címkék a `BOOKING_VIEWS`-ből és a `WIDGET_TITLES`-ből jönnek, a widgetek fejlécével közösen.
+- **Szerverkomponensek.** Mindhárom aszinkron szerverkomponens; a Payload a `req`-et, a `user`-t és a `locale`-t adja nekik. A „most” időpontot widgetenként egyszer veszik, és paraméterként adják tovább, így a tiszta függvények tesztelhetők.
+- **Payload UI-elemek.** `Pill` (állapot, Elkelt), `Thumbnail` (a minta képe, üres `alt`-tal, mert mellette a név szövegként áll; ha nincs kép, a Payload saját helyettesítő ikonja), `Banner` (hiba), `Link` (a Payload töltéssávjával, `prefetch={false}`). Kliens komponensek, a szerverkomponens szerializálható propokat ad nekik. A számlálók és a mintakártyák saját markupot kapnak.
+- **Stílus.** Egy CSS Module (`dashboard.module.css`) a Payload témaváltozóival (`--theme-elevation-*`, `--style-radius-*`, `--accessibility-outline`), így a világos és a sötét admin téma magától működik. A Payload saját stílusai cascade layerben vannak, a modul szabályai ezért nyernek. A linkek saját `:focus-visible` keretet kapnak (a Payload `a:focus { outline: none }`-t ad), a másodlagos szöveg `--theme-elevation-600` (AA kontraszt). Az adminban nincs Tailwind.
+- **Lekérdezések** (`data.ts`). A Local API-t a widget `req`-jével és `overrideAccess: false`-szal hívják, így a gyűjtemények jogosultsága érvényes. Csak a szükséges mezőket kérik le (`select`, `populate`, a konstansok `satisfies`-szal ellenőrizve); a kép a minta első képének `thumbnail` mérete, ennek hiányában az eredeti. Az aktív foglalásokat egy kérésen belül egyszer olvassák be (React `cache`), az Áttekintés és a Lefoglalt minták közösen használja.
   - Lista: egy `find` a nézet szűrésével és rendezésével, `limit: 5`; a `totalDocs` adja a „Mind (N)” számát.
   - Áttekintés: három `count`, plusz az elkelt minták: a minták szabálya és az aktív foglalások mintánkénti száma (`countActiveByDesign`), majd `availability()`.
   - Lefoglalt minták: az aktív foglalások mintája és beérkezése, mintánként csoportosítva (darab, utolsó beérkezés), az első 12 minta egy `find`-dal.
-- **Tiszta függvények** (`lib/dashboard.ts`): a négy nézet leírása (szűrés a „most”-tól függően, rendezés, dátum fajtája, üres szöveg); a mintacímke („Elkelt · 1/1”, „2 / 3 alkalom”, „4 foglalás”); a lefoglalt minták csoportosítása és sorrendje; a szűrt admin listák linkje (`/admin/collections/bookings?where[status][equals]=pending&sort=createdAt`), az admin útvonalát a config `routes.admin`-jából véve. A közelgő nézet linkjében a „most” a renderelés ideje.
+- **Tiszta függvények** (`lib/dashboard.ts`): a négy nézet leírása (szűrés a „most”-tól függően, rendezés, dátum fajtája, üres szöveg); a mintacímke („Elkelt · 1/1”, „2 / 3 alkalom”, „4 foglalás”); a lefoglalt minták csoportosítása és sorrendje; a szűrt admin listák linkje (`/admin/collections/bookings?where[status][equals]=pending`, rendezés nélkül), az admin útvonalát a config `routes.admin`-jából véve. A közelgő nézet linkjében a „most” a renderelés ideje. Az elkelt minták linkje az `id`-kat egyetlen, vesszővel elválasztott értékként adja át, üres listánál nincs link.
 - **Közös számlálás.** A mintánkénti aktív foglalásszámlálás most a `lib/flash.ts` `getFlashCatalog` függvényében van. Átkerül a `lib/booking-rules.ts`-be (`countActiveByDesign`), és az oldal meg a dashboard is ezt használja, így az „Elkelt” mindkét helyen ugyanazt jelenti.
 - **Adatbázis.** Gyűjtemény nem változik: nincs migráció, és a futó `next dev` sem kérdez a sémáról. Az elrendezés a Payload meglévő `payload_preferences` táblájába kerül.
 
@@ -142,12 +151,12 @@ payload-types.ts         újragenerálva (npm run generate:types)
 |---|---|---|
 | `dashboard:addButton` | Adj hozzá + | Hozzáadás + |
 | `dashboard:addWidget` | Adjon hozzá widgetet | Widget hozzáadása |
-| `dashboard:deleteWidget` | Törölje a(z) {{id}} widgetet | A(z) {{id}} widget törlése |
+| `dashboard:deleteWidget` | Törölje a(z) {{id}} widgetet | Widget törlése: {{id}} |
 | `dashboard:discardMessage` | Mentett változtatásai vannak az irányítópult elrendezésében. Biztosan el szeretné vetni őket? | Az elrendezésen nem mentett változtatások vannak. Biztosan elveted őket? |
 | `dashboard:discardTitle` | Elveti a változtatásokat? | Elveted a változtatásokat? |
 | `dashboard:editDashboard` | Műszerfal szerkesztése | Irányítópult szerkesztése |
-| `dashboard:editingDashboard` | Szerkesztési irányítópult | Szerkesztő mód |
-| `dashboard:noItems` | Nincsenek widgetek az irányítópulton. Hozzáadhatja őket a felső sávban található "Irányítópult" menüből. | Nincs widget az irányítópulton. Az „Irányítópult” menüben kapcsold be a szerkesztést, és adj hozzá egyet. |
+| `dashboard:editingDashboard` | Szerkesztési irányítópult | Szerkesztési mód |
+| `dashboard:noItems` | Nincsenek widgetek az irányítópulton. Hozzáadhatja őket a felső sávban található "Irányítópult" menüből. | Nincs widget az irányítópulton. A „Hozzáadás +” gombbal adhatsz hozzá egyet; ha nem látod, kapcsold be a szerkesztést az „Irányítópult” menüben. |
 | `dashboard:resetLayout` | Alaphelyzet visszaállítása | Alapelrendezés visszaállítása |
 | `dashboard:searchWidgets` | Keresés widgetek... | Widget keresése… |
 | `error:failedToResetLayout` | A felület visszaállítása sikertelen. | Nem sikerült visszaállítani az alapelrendezést. |
@@ -160,7 +169,7 @@ A dashboardot csak bejelentkezett admin látja (a Payload a widgetet csak bejele
 
 ## 9. Hibakezelés
 
-- Minden widget a saját lekérdezését `try/catch`-ben futtatja (`loadSafely`). Hibánál a widget címe alatt egy `Banner` (`type="error"`) áll: „Nem sikerült betölteni. Töltsd újra az oldalt.”, a dashboard többi része működik. Első betöltéskor a Payload nem fogja meg a widgetek hibáit (csak a szerkesztéskor hozzáadott widgetét), ezért egyetlen hibás lekérdezés az egész nyitó oldalt elvinné.
+- Minden widget a saját lekérdezését `try/catch`-ben futtatja (`loadSafely`); a listák a sorok dátumszövegét is ezen belül írják meg. Hibánál a widget címe alatt egy `Banner` (`type="error"`) áll: „Nem sikerült betölteni. Töltsd újra az oldalt.”, a dashboard többi része működik. A Payload a widget aszinkron hibáját egyik úton sem fogja meg (a `render-widget` szerverfüggvény `try/catch`-e csak a komponens létrehozását fedi, a futását nem), ezért egyetlen hibás lekérdezés az egész nyitó oldalt elvinné.
 - A naplóba `req.payload.logger.error` kerül a `loggableError()` (`cms/log.ts`) kimenetével és a widget slugjával. A hiba üzenete nem kerül a naplóba: a Drizzle a lekérdezés paramétereit, köztük neveket, fűz hozzá.
 - Hiányzó kép: a `Thumbnail` helyettesítő ikonja. Hiányzó minta: a név a `designName` pillanatképből, kép nélkül. Mintát nem lehet törölni, amíg foglalás hivatkozik rá (`guardDesignDelete`), ez csak biztonsági háló.
 
@@ -179,14 +188,22 @@ A dashboardot csak bejelentkezett admin látja (a Payload a widgetet csak bejele
   - az időpont nélküli jóváhagyott csak az *Időpontra vár* nézetben van;
   - múltbeli időpont nem közelgő;
   - az elkelt minták száma megegyezik azzal, amit az oldal „Elkelt”-nek mutat;
+  - az „Elkelt minta” linkje az admin saját URL-olvasásával és a Payload lekérdezésével pontosan az elkelt mintákat adja, 21-nél több esetén is;
   - felhasználó nélküli `req`-gel a lekérdezés elutasítva;
-  - hibás lekérdezésnél a `loadSafely` `null`-t ad, és a naplóba a hiba üzenete nem kerül be.
-- **Config** (`tests/int/dashboard-config.test.ts`):
+  - hibás lekérdezésnél a `loadSafely` `null`-t ad, és a naplóba a hiba üzenete nem kerül be;
+  - minden teszt friss `req`-et kap (egy kérés gyorsítótárazza a betöltött dokumentumokat).
+- **Config** (`tests/int/dashboard-config.test.ts`, a felépített configon, adatbázis nélkül):
   - az alapelrendezés minden slugja regisztrált widget;
   - minden widget komponense szerepel az `importMap.js`-ben (elmaradt `generate:importmap` esetén a teszt elbukik);
   - a `collections` widget címkéje „Gyűjtemények”;
-  - a felülírt fordítási kulcsok léteznek a Payload magyar fordításában (ha egy frissítés átnevezi őket, kiderül).
-- A komponensek kirajzolását nem teszteljük automatikusan: a Payload UI-elemei SCSS-t importálnak, és aszinkron szerverkomponenst Vitestben csak kerülőúttal lehet renderelni. Ezt a kézi ellenőrzés fedi le.
+  - a felülírt fordítási kulcsok léteznek a Payload magyar fordításában (ha egy frissítés átnevezi őket, kiderül), és el is jutnak az admin fordításáig;
+  - a Payload saját widgetje nem kerül a modul widgetlistájába.
+- **Renderelés** (`tests/unit/dashboard-widgets.test.tsx`; a Vitest a `.tsx` teszteket is futtatja): a Payload UI-elemei helyén egyszerű helyettesítők, a lekérdezések mockolva, a `loadSafely` valódi. Ellenőrzi:
+  - a nullás számláló nem link;
+  - hibás dátum hibasávot ad, nem dobást;
+  - a sorok és a „Mind (N)” linkjei;
+  - az üres `alt`;
+  - az elkelt kártya sötét címkéje.
 - Az `npm run lint`, az `npm run typecheck` és az `npm test` hiba nélkül fut le.
 - **Kézi ellenőrzés** egy elkülönített másolaton, mintafoglalásokkal, nem a fejlesztői adatbázisban: világos és sötét téma; telefonszélesség (768 px alatt egymás alatt); szerkesztő mód (törlés, hozzáadás, átméretezés, áthúzás, mentés, visszaállítás); minden link a jó szűrt listát nyitja; üres adatbázissal az üres állapotok.
 
@@ -206,7 +223,13 @@ A dashboardot csak bejelentkezett admin látja (a Payload a widgetet csak bejele
 - Szélességek: `x-small` 25%, `small` 33⅓%, `medium` 50%, `large` 66⅔%, `x-large` 75%, `full` 100%. 768 px alatt minden widget 100%.
 - Az elrendezés a `dashboard-layout` kulcsú preferencia, felhasználónként. Ha nincs, az alapelrendezés látszik. A visszaállítás törli a preferenciát, és a szerverről újra lekéri az alapelrendezést. Szerkesztéskor hozzáadott widget a `minWidth` méretén indul.
 - A widget komponens propjai: `req`, `user`, `locale`, `permissions`, `cookies`, `widgetData`, `widgetSlug`. Objektum alakú `Component` esetén a `serverProps` a szerverkomponens propjaihoz adódik (`RenderServerComponent`).
-- Első rendereléskor a `ModularDashboard` nem kezeli a widget hibáját; a szerkesztéskor hozzáadott widgetet renderelő `render-widget` szerverfüggvény igen.
+- A widget aszinkron hibáját a Payload egyik úton sem kezeli: első rendereléskor a `ModularDashboard` nem, a szerkesztéskor hozzáadott widgetet renderelő `render-widget` szerverfüggvény `try/catch`-e pedig csak a `RenderServerComponent` hívást fedi, amely a komponenst nem futtatja le (javítva 2026-10-17; a korábbi szöveg szerint az utóbbi megfogta).
+- A `sanitizeConfig` a kapott `admin.dashboard.widgets` tömbbe `push`-olja a `collections` widgetet.
+- Az admin a lista-URL-t `qs.parse(…, { depth: 10, ignoreQueryPrefix: true })`-zal olvassa, az alapértelmezett `arrayLimit: 20`-szal: 21 elemnél hosszabb indexelt lista (`where[id][in][21]`) objektummá válik, és a Payload a szűrőt elhagyja. Az `in` vesszővel elválasztott szöveget is elfogad.
+- A listanézet a kapott `sort`-ot (és `limit`-et, `columns`-ot) a `collection-<slug>` preferenciába menti, a `where`-t nem.
+- Az admin csak a `@payloadcms/next/css`-t tölti be; ebben a `:focus-visible` keret után `a:focus { outline: none }` áll, így egy sima link fókuszkeret nélkül marad. A Payload komponensei (gomb, pill, táblázat) maguk adják vissza.
+- A szélességválasztó a nyers neveket mutatja (`small`, `medium`, …); ezekhez nincs fordítási kulcs.
+- A `withPayload` kikapcsolja a Turbopack szerveroldali fast refresh-ét, így fejlesztés közben egy változás után a teljes szerveroldali modulgráf újra lefut.
 - Az import map generátor a dashboard widgetek komponenseit is felveszi. A hozzáadás listája a widget `label`-jét mutatja, ennek hiányában a slugból képzett nevet (`toWords`).
 - Az admin listanézet a `where` és a `sort` paramétert az URL-ből olvassa (`qs-esm`).
 - `@payloadcms/ui`: a `Pill` (`pillStyle`: `warning`, `success`, `light`, `light-gray`, `dark` …), a `Thumbnail` és a `Banner` (`type`: `error` …) kliens komponens.

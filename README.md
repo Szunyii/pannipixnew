@@ -33,6 +33,7 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 | `npm test` | egység- és integrációs tesztek; minden tesztfájl saját, ideiglenes SQLite adatbázist kap |
 | `npm run lint`, `npm run typecheck` | statikus ellenőrzés |
 | `npm run generate:types` | a `payload-types.ts` újragenerálása a Payload konfigurációból |
+| `npm run generate:importmap` | az admin import mapjének (`app/(payload)/admin/importMap.js`) újragenerálása; új vagy átnevezett admin komponens után kell |
 | `npm run payload migrate:create <név>` | migrációs fájl a sémaváltozáshoz; élesítés előtt kötelező |
 | `npm run seed` | demó adatok üres fejlesztői adatbázisba (élesben soha) |
 
@@ -48,10 +49,11 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 
 ## Az admin nyitó oldala
 
-Az `/admin` nyitó oldalán foglalási widgetek vannak: *Áttekintés* (négy számláló), *Jóváhagyásra vár*, *Időpontra vár*, *Közelgő időpontok*, *Legutóbbi foglalások* és *Lefoglalt minták*, alattuk a gyűjtemények kártyái. Egy számláló, egy sor vagy egy minta a hozzá tartozó szűrt listát vagy a foglalást nyitja meg. A szűrt lista a *Foglalások* lista megszokott sorrendjében jelenik meg: a link csak szűr, a lista rendezését nem állítja át. Az adatok az oldal betöltésekor frissülnek.
+Az `/admin` nyitó oldalán foglalási widgetek vannak: *Áttekintés* (négy számláló), *Jóváhagyásra vár*, *Időpontra vár*, *Közelgő időpontok*, *Legutóbbi foglalások* és *Lefoglalt minták*, alattuk a gyűjtemények kártyái. A számlálók és a mintakártyák a hozzájuk tartozó szűrt listát nyitják meg, a sorok magát a foglalást. A szűrt lista a megszokott sorrendjében jelenik meg: a link csak szűr, a lista rendezését nem állítja át. Az adatok az oldal betöltésekor frissülnek.
 
-- **Elrendezés:** a felső sáv *Irányítópult* menüjében válaszd az *Irányítópult szerkesztése* lehetőséget. A *Hozzáadás +* gombbal widgetet adhatsz hozzá, a meglévőket törölheted, átméretezheted és áthúzhatod; a *Módosítások mentése* adminonként menti az elrendezést. Az *Alapelrendezés visszaállítása* az eredetit hozza vissza.
-- **Új widget a kódban:** a widgeteket és az alapelrendezést a `cms/dashboard/widgets.ts` sorolja fel. Új vagy átnevezett komponens után futtasd az `npm run generate:importmap` és az `npm run generate:types` parancsot. Akinek már van mentett elrendezése, annál az új widget nem jelenik meg magától: hozzá kell adnia, vagy vissza kell állítania az alapelrendezést.
+- **Elrendezés:** a felső sáv *Irányítópult* menüjében válaszd az *Irányítópult szerkesztése* lehetőséget. A *Hozzáadás +* gombbal widgetet adhatsz hozzá, a meglévőket törölheted, átméretezheted és áthúzhatod; a *Módosítások mentése* adminonként menti az elrendezést. Átméretezésnél a szélességek angol neve látszik (*small*, *medium*, *large*, *full*), mellettük százalékkal; ezeket a Payload nem fordítja le.
+- **Alapelrendezés:** az *Alapelrendezés visszaállítása* ugyanebben a menüben van, szerkesztés közben nem látszik. Azonnal, megerősítés nélkül törli a mentett elrendezést, és a kódban megadottat hozza vissza. Akinek már van mentett elrendezése, annál egy később hozzáadott widget nem jelenik meg magától: a *Hozzáadás +* listából veheti fel, vagy visszaállíthatja az alapelrendezést.
+- **Új widget a kódban:** a widgeteket és az alapelrendezést a `cms/dashboard/widgets.ts` sorolja fel. Új widget vagy komponens, illetve átnevezett komponens után futtasd az `npm run generate:importmap` és az `npm run generate:types` parancsot, és commitold a megváltozott `app/(payload)/admin/importMap.js` és `payload-types.ts` fájlt. Egy widget `slug`-ját ne nevezd át: a mentett elrendezések erre hivatkoznak.
 
 ## Élesítés (Hostinger, Node.js alkalmazás)
 

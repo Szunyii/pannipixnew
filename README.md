@@ -33,6 +33,7 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 | `npm test` | egység- és integrációs tesztek; minden tesztfájl saját, ideiglenes SQLite adatbázist kap |
 | `npm run lint`, `npm run typecheck` | statikus ellenőrzés |
 | `npm run generate:types` | a `payload-types.ts` újragenerálása a Payload konfigurációból |
+| `npm run generate:importmap` | az admin import mapjének (`app/(payload)/admin/importMap.js`) újragenerálása; új vagy átnevezett admin komponens után kell |
 | `npm run payload migrate:create <név>` | migrációs fájl a sémaváltozáshoz; élesítés előtt kötelező |
 | `npm run seed` | demó adatok üres fejlesztői adatbázisba (élesben soha) |
 
@@ -45,6 +46,14 @@ SMTP beállítás nélkül a levelek nem mennek ki, hanem a szerver konzoljára 
 - **Dupla foglalás:** két egyedi index (`slot`, illetve `design + seat`) zárja ki akkor is, ha ketten egyszerre kattintanak.
 - **E-mailek:** az `ADMIN_EMAIL` címre minden, az oldalon beküldött foglalásról levél érkezik. Az ügyfél a beérkezésről, a jóváhagyásról (a levél tárgya: „Visszaigazolva: …”), az elutasításról és a lemondásról kap levelet. Az időpont akkor szerepel a levelekben, ha a foglalásnak már van: ha a jóváhagyással egy mentésben adod meg, a visszaigazolás már tartalmazza; különben a levél azt írja, hogy az időpontot válaszlevélben egyeztetitek. Az időpont utólagos megadásáról vagy cseréjéről nem megy külön levél.
 - **Időpontválasztó:** az oldali időpontválasztó ki van kapcsolva; a `lib/features.ts` `SLOT_PICKING` konstansa kapcsolja. `true` értékkel a foglalási ablak első lépése újra az időpontválasztás, az űrlap megköveteli az időpontot, és az oldal meg a levelek szövege is visszaáll (az admin oldalon az időpont ekkor sem kötelező). Átállítás után futtasd az `npm run generate:types` parancsot, mert az admin leírások a `payload-types.ts` megjegyzéseibe is bekerülnek.
+
+## Az admin nyitó oldala
+
+Az `/admin` nyitó oldalán foglalási widgetek vannak: *Áttekintés* (négy számláló), *Jóváhagyásra vár*, *Időpontra vár*, *Közelgő időpontok*, *Legutóbbi foglalások* és *Lefoglalt minták*, alattuk a gyűjtemények kártyái. A számlálók és a mintakártyák a hozzájuk tartozó szűrt listát nyitják meg, a sorok magát a foglalást. A szűrt lista a megszokott sorrendjében jelenik meg: a link csak szűr, a lista rendezését nem állítja át. Az adatok az oldal betöltésekor frissülnek.
+
+- **Elrendezés:** a felső sáv *Irányítópult* menüjében válaszd az *Irányítópult szerkesztése* lehetőséget. A *Hozzáadás +* gombbal widgetet adhatsz hozzá, a meglévőket törölheted, átméretezheted és áthúzhatod; a *Módosítások mentése* adminonként menti az elrendezést. Átméretezésnél a szélességek angol neve látszik (*small*, *medium*, *large*, *x-large*, *full*), mellettük százalékkal; ezeket a Payload nem fordítja le.
+- **Alapelrendezés:** az *Alapelrendezés visszaállítása* ugyanebben a menüben van, szerkesztés közben nem látszik. Azonnal, megerősítés nélkül törli a mentett elrendezést, és a kódban megadottat hozza vissza. Akinek már van mentett elrendezése, annál egy később hozzáadott widget nem jelenik meg magától: a *Hozzáadás +* listából veheti fel, vagy visszaállíthatja az alapelrendezést.
+- **Új widget a kódban:** a widgeteket és az alapelrendezést a `cms/dashboard/widgets.ts` sorolja fel. Új widget vagy komponens, illetve átnevezett komponens után futtasd az `npm run generate:importmap` és az `npm run generate:types` parancsot, és commitold a megváltozott `app/(payload)/admin/importMap.js` és `payload-types.ts` fájlt. Egy widget `slug`-ját ne nevezd át: a mentett elrendezések erre hivatkoznak.
 
 ## Élesítés (Hostinger, Node.js alkalmazás)
 

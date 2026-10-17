@@ -11,6 +11,16 @@
 **Spec:** `docs/superpowers/specs/2026-10-16-admin-dashboard-design.md`
 
 > A terv kódját egy elkülönített másolaton végigpróbáltam (2026-10-16): a teljes tesztcsomag, a `tsc` és az ESLint hibátlan, és `next dev` alatt az admin nyitó oldala világos, sötét és telefonos nézetben is helyesen rajzolta ki a widgeteket. A linkek szűrését a REST API-n is ellenőriztem.
+>
+> **Megjegyzés (2026-10-17, végrehajtás):** a `feature/admin-dashboard` ágon, feladatonkénti kódreview-val hajtottuk végre. A review-k nyomán a kód több ponton eltér az alábbi kódrészletektől. A mérvadó a kód és a spec, amelyet a spec 2026-10-17-i megjegyzése és a helyben javított szakaszai írnak le. Az eltérések feladatonként:
+> - **1.** A `countActiveByDesign` paramétere kötelező `design`-t kér, a visszatérési típusa `ReadonlyMap<number, number>`.
+> - **2.** Két új tesztet kapott: a 23 és a 25 órás nap körüli „tegnap”-ot, és a budapesti újévet. Pontosabbak lettek a kommentjei.
+> - **3.** A `rankBookedDesigns` kötelező `design`-t kér, és van egy tesztje arra, hogy ugyanazt számolja, mint a `countActiveByDesign`. A linkek nem visznek `sort`-ot (az `adminListUrl` harmadik paramétere csak a `where`). A `designsUrl` vesszővel elválasztott `in`-t ad, és üres listánál `undefined`. Új a `WIDGET_TITLES`, és a `Date` ISO-ként kerül a linkbe.
+> - **4.** A `select`-konstansok `satisfies`-szal ellenőrzöttek. Az `activeBookings` React `cache`-ben van, és van `BookingListData` típus. Az `Overview` típus `OverviewData` lett, hogy a típusnevek ne ütközzenek a komponensek nevével. A tesztek tesztenként friss `req`-et kapnak, és egy 22 elkelt mintás linkteszttel bővültek.
+> - **5.** A widgetek a Payload `Link`-jét használják (`prefetch={false}`), és látható fókuszkeretük van. A szürke szöveg `--theme-elevation-600`, a keskeny lista 260 px alatt törik. A mintakép `alt=""`. A dátumszöveg a `loadSafely`-n belül készül. A widgetek renderelési tesztet kaptak (`tests/unit/dashboard-widgets.test.tsx`, a `vitest.config.ts` a `.tsx`-et is futtatja).
+> - **6.** A lista slugja a nézetből képződik (`bookingList(view)`), a `dashboard` `satisfies DashboardConfig`. A config a widgetlista másolatát adja a Payloadnak. A config-teszt adatbázis nélkül fut. Három szerkesztő módú szöveg megváltozott (`deleteWidget`, `editingDashboard`, `noItems`).
+> - **7.** A README-szakasz pontosabb lett: a listák, a visszaállítás, a slug-ok és a generálás. A Parancsok táblázatba bekerült a `generate:importmap`.
+> - **8.** A kézi próbát fej nélküli Chrome-mal, egy másolaton futtattuk. A „Mind (N)” linkek nem a widget sorrendjében, hanem a lista mentett sorrendjében nyílnak, és a szerkesztő mód felirata „Szerkesztési mód”.
 
 ---
 

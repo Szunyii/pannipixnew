@@ -4,7 +4,7 @@ export default defineConfig({
   resolve: { tsconfigPaths: true },
   test: {
     environment: "node",
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
     setupFiles: ["./tests/setup.ts"],
     // Payload keeps its instance on globalThis and reads env when the config is imported, so a test file
     // only gets its own database in its own process. Vitest suggests `isolate: false` for import-heavy suites: don't.

@@ -4,6 +4,7 @@ import {
   RELEASED_STATUSES,
   STATUS_LABELS,
   availability,
+  countActiveByDesign,
   effectiveLimit,
   isActiveStatus,
   isReleasedStatus,
@@ -151,5 +152,31 @@ describe("relationId", () => {
 
   it.each([0, -1, 1.5, NaN])("rejects %s, which is not a row id", (value) => {
     expect(relationId(value)).toBeNull();
+  });
+});
+
+describe("countActiveByDesign", () => {
+  it("counts each design's active bookings", () => {
+    const counts = countActiveByDesign([
+      { design: 1, status: "pending" },
+      { design: 1, status: "completed" },
+      { design: 2, status: "confirmed" },
+    ]);
+    expect(counts).toEqual(
+      new Map([
+        [1, 2],
+        [2, 1],
+      ]),
+    );
+  });
+
+  it("skips released bookings and bookings without a usable design", () => {
+    const counts = countActiveByDesign([
+      { design: 1, status: "rejected" },
+      { design: 1, status: "cancelled" },
+      { design: null, status: "pending" },
+      { design: { id: 3 }, status: "pending" },
+    ]);
+    expect(counts).toEqual(new Map([[3, 1]]));
   });
 });

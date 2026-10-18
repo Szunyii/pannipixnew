@@ -365,12 +365,23 @@ function BookingFlow({ design, titleId, onClose }: { design: FlashDesign; titleI
 
               <input type="hidden" name="designId" value={design.id} />
               {SLOT_PICKING && <input type="hidden" name="slotId" value={slot?.id ?? ""} />}
-              {/* Honeypot: hidden from people and screen readers, tempting to bots. */}
-              <div aria-hidden="true" className="absolute -left-[9999px] size-px overflow-hidden">
+              {/*
+                Honeypot: tempting to bots, out of autofill's reach. Browser autofill and password managers fill
+                off-screen fields they recognise, and a filled honeypot silently drops a real booking. So the field
+                isn't rendered (hidden) and is read-only, which autofill skips; a bot that sets every field still fills it.
+              */}
+              <div hidden aria-hidden="true">
                 <label>
                   Weboldal
-                  {/* Password managers fill anything that looks fillable; a filled honeypot silently drops a real booking. */}
-                  <input type="text" name="website" tabIndex={-1} autoComplete="off" data-1p-ignore data-lpignore="true" />
+                  <input
+                    type="text"
+                    name="website"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    readOnly
+                    data-1p-ignore
+                    data-lpignore="true"
+                  />
                 </label>
               </div>
 

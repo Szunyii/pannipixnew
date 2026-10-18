@@ -20,6 +20,15 @@ const iconBtn =
 export function Header() {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string | null>(null);
+  const [scrolled, setScrolled] = useState(false);
+
+  // At the top the header has no rule, so it reads as part of the hero; the rule comes in once the page moves.
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 0);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   // Mark the nav item of the section in the middle of the viewport.
   useEffect(() => {
@@ -55,7 +64,11 @@ export function Header() {
   return (
     <>
       {/* Opaque: a see-through paper turns muddy grey over the ink contact section and footer. */}
-      <header className="sticky top-0 z-50 border-b border-hairline bg-paper pt-[env(safe-area-inset-top)]">
+      {/* The rule also shows while the menu is open, so the sheet below starts at a line wherever the page was. */}
+      <header
+        data-ruled={scrolled || open ? "" : undefined}
+        className="sticky top-0 z-50 border-b border-transparent bg-paper pt-[env(safe-area-inset-top)] transition-[border-color] duration-300 data-ruled:border-hairline"
+      >
         {/*
           Three columns so the centre item sits exactly on the page axis: the wordmark on phones, the nav
           from lg. In between there's no room for both beside a centred nav, so the nav sits on the right.

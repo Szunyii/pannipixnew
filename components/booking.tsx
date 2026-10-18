@@ -7,140 +7,228 @@ import { SLOT_PICKING } from "@/lib/features";
 import { ChevronDown, Instagram, Mail } from "./icons";
 import { Arrow, btn, container } from "./ui";
 
-const field =
-  "mt-1.5 block w-full border-0 border-b border-paper/25 bg-transparent pb-3 pt-2 text-[1.0625rem] text-paper placeholder:text-ash/60 transition-[border-color,box-shadow] focus:border-paper focus:shadow-[0_1px_0_var(--color-paper)] focus:outline-none";
+// From lg the section is a ledger on the axis: labels left of it, fields right of it, rules running across.
+const cols = "lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)]";
+const labelSide = "lg:pr-10 xl:pr-14";
+const fieldSide = "lg:pl-10 xl:pl-14";
 
-function Field({
+// Fields inherit the section's paper colour, so the select can grey out its own text while it is empty.
+const surface =
+  "w-full rounded-xs border border-paper/15 bg-paper/4 px-4.5 text-[1.0625rem] placeholder:text-ash/60 transition-[border-color,box-shadow] duration-200 hover:border-paper/30 focus:border-paper focus:shadow-[0_0_0_3px_rgb(247_247_245/0.08)] focus:outline-none";
+const box = `${surface} h-14`;
+
+/** One ledger row: numeral, label and hint left of the axis, the field right of it; stacked on phones. */
+function Row({
+  n,
   label,
-  className = "",
-  ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
-  const id = useId();
+  htmlFor,
+  hint,
+  hintId,
+  children,
+}: {
+  n: string;
+  label: string;
+  htmlFor: string;
+  hint?: string;
+  hintId?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className={className}>
-      <label htmlFor={id} className="label text-[0.6875rem] text-ash">
-        {label}
-      </label>
-      <input id={id} className={field} {...props} />
+    <div className={`group grid gap-y-4 border-b border-paper/15 py-6 lg:gap-y-0 lg:py-0 ${cols}`}>
+      <div className={`grid grid-cols-[3.5rem_1fr] content-start items-start lg:grid-cols-[6rem_1fr] lg:py-7 ${labelSide}`}>
+        {/* Lights up while its field has focus, so the row reads across the axis. */}
+        <span
+          aria-hidden="true"
+          className="row-span-2 font-display text-[2.5rem] leading-[0.9] text-paper/30 transition-colors duration-300 group-focus-within:text-paper lg:text-[3.5rem]"
+        >
+          {n}
+        </span>
+        <label htmlFor={htmlFor} className="label pt-1.5 text-paper">
+          {label}
+        </label>
+        {/* Small Bodoni needs the small optical size; at the pinned opsz 28 its hairlines fade out. */}
+        {hint && (
+          <p
+            id={hintId}
+            className="col-start-2 mt-2 font-display text-base italic leading-snug text-ash [font-variation-settings:'opsz'_11] lg:mt-2.5 lg:text-[1.0625rem]"
+          >
+            {hint}
+          </p>
+        )}
+      </div>
+      <div className={`lg:py-5.5 ${fieldSide}`}>{children}</div>
     </div>
   );
 }
 
 export function Booking() {
   const [sent, setSent] = useState(false);
-  const formTitleId = useId();
+  const [placement, setPlacement] = useState("");
+  const nameId = useId();
+  const emailId = useId();
+  const emailHint = useId();
   const ideaId = useId();
+  const ideaHint = useId();
   const placeId = useId();
+  const placeHint = useId();
 
   return (
     <section id="kapcsolat" data-nav="kapcsolat" aria-labelledby="booking-title" className="surface-ink bg-ink text-paper">
-      {/* The photo comes last in the source, so on phones the form follows its heading; from lg it sits under the intro. */}
-      <div className={`${container} grid gap-16 py-24 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-x-24 lg:gap-y-12 lg:py-36`}>
-        <div className="lg:col-start-1 lg:row-start-1">
-          <p className="label text-ash">Kapcsolat</p>
-          <h2
-            id="booking-title"
-            className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] leading-[1] tracking-[-0.02em]"
+      <div className={container}>
+        <div className="relative py-24 lg:py-36">
+          {/* The axis, top to bottom of the section; the columns split on it. */}
+          <span aria-hidden="true" className="absolute inset-y-0 left-[40%] hidden w-px bg-paper/15 lg:block" />
+
+          <div className={`grid ${cols}`}>
+            <div className={labelSide}>
+              <p className="label text-ash">Kapcsolat</p>
+              <h2
+                id="booking-title"
+                className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] leading-[1] tracking-[-0.02em]"
+              >
+                Kezdjük a te <em>mintáddal.</em>
+              </h2>
+            </div>
+            <div className={`mt-8 lg:mt-0 lg:self-end ${fieldSide}`}>
+              <p className="label text-ash">Egyedi tetoválás</p>
+              <p className="mt-4 max-w-104 leading-[1.7] text-ash">
+                Írd le, mit szeretnél, és pár napon belül válaszolok.{" "}
+                {SLOT_PICKING
+                  ? "Flash mintára közvetlenül a mintánál tudsz időpontot foglalni."
+                  : "Flash mintát közvetlenül a mintánál tudsz foglalni."}
+              </p>
+            </div>
+          </div>
+
+          <form
+            aria-label="Jelentkezés egyedi tetoválásra"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setSent(true);
+            }}
+            className="mt-16 border-t border-paper/15 lg:mt-20"
           >
-            Kezdjük a te <em>mintáddal.</em>
-          </h2>
-          <p className="mt-7 max-w-[25rem] leading-[1.7] text-ash">
-            Írd le, mit szeretnél, és pár napon belül válaszolok.{" "}
-            {SLOT_PICKING
-              ? "Flash mintára közvetlenül a mintánál tudsz időpontot foglalni."
-              : "Flash mintát közvetlenül a mintánál tudsz foglalni."}
-          </p>
-          <ul className="mt-12 space-y-1 border-t border-paper/15 pt-6">
-            <li>
-              <a href="https://instagram.com/pannipix" className="inline-flex min-h-11 items-center gap-3.5 hover:text-ash">
-                <Instagram size={20} /> @pannipix
-              </a>
-            </li>
-            <li>
-              <a href="mailto:hello@pannipix.hu" className="inline-flex min-h-11 items-center gap-3.5 hover:text-ash">
-                <Mail size={20} /> hello@pannipix.hu
-              </a>
-            </li>
-          </ul>
-        </div>
+            <Row n="01" label="Név" htmlFor={nameId}>
+              <input
+                id={nameId}
+                name="name"
+                autoComplete="name"
+                autoCapitalize="words"
+                enterKeyHint="next"
+                required
+                className={box}
+              />
+            </Row>
 
-        <form
-          aria-labelledby={formTitleId}
-          onSubmit={(e) => {
-            e.preventDefault();
-            setSent(true);
-          }}
-          className="lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:pt-3"
-        >
-          <p id={formTitleId} className="label text-[0.6875rem] text-ash">Egyedi tetoválás</p>
-          <div className="mt-10 grid gap-x-10 gap-y-10 sm:grid-cols-2">
-            <Field label="Név" name="name" autoComplete="name" autoCapitalize="words" enterKeyHint="next" required />
-            <Field label="E-mail" name="email" type="email" autoComplete="email" autoCapitalize="none" spellCheck={false} enterKeyHint="next" required />
+            <Row n="02" label="E-mail" htmlFor={emailId} hint="Ide küldöm a választ." hintId={emailHint}>
+              <input
+                id={emailId}
+                name="email"
+                type="email"
+                placeholder="nev@pelda.hu"
+                autoComplete="email"
+                autoCapitalize="none"
+                spellCheck={false}
+                enterKeyHint="next"
+                required
+                aria-describedby={emailHint}
+                className={box}
+              />
+            </Row>
 
-            <div className="sm:col-span-2">
-              <label htmlFor={ideaId} className="label text-[0.6875rem] text-ash">
-                Az ötleted
-              </label>
+            <Row n="03" label="Az ötleted" htmlFor={ideaId} hint="Egy emlék, egy szimbólum, egy hangulat." hintId={ideaHint}>
               <textarea
                 id={ideaId}
                 name="idea"
-                rows={3}
-                placeholder="Mi foglalkoztat? Egy emlék, egy szimbólum, egy hangulat…"
-                className={`${field} resize-none leading-[1.6]`}
+                rows={6}
+                placeholder="Mi foglalkoztat?"
+                aria-describedby={ideaHint}
+                className={`${surface} block resize-none py-4 leading-[1.6]`}
               />
-            </div>
+            </Row>
 
-            <div>
-              <label htmlFor={placeId} className="label text-[0.6875rem] text-ash">
-                Testtáj
-              </label>
-              <div className="relative">
-                <select
-                  id={placeId}
-                  name="placement"
-                  defaultValue=""
-                  className={`${field} cursor-pointer appearance-none pr-8`}
-                >
-                  <option value="" disabled className="text-ink">
-                    Válassz
-                  </option>
-                  {PLACEMENTS.map((p) => (
-                    <option key={p.value} value={p.value} className="text-ink">
-                      {p.label}
+            <Row n="04" label="Testtáj és méret" htmlFor={placeId} hint="Ha még nem tudod, hagyd üresen." hintId={placeHint}>
+              <div className="flex gap-3 sm:gap-4">
+                <div className="relative min-w-0 flex-1">
+                  <select
+                    id={placeId}
+                    name="placement"
+                    aria-label="Testtáj"
+                    aria-describedby={placeHint}
+                    value={placement}
+                    onChange={(e) => setPlacement(e.target.value)}
+                    className={`${box} cursor-pointer appearance-none pr-11 ${placement ? "" : "text-ash/60"}`}
+                  >
+                    <option value="" disabled className="text-ink">
+                      Válassz
                     </option>
-                  ))}
-                </select>
-                <ChevronDown size={16} className="pointer-events-none absolute bottom-4 right-0 text-ash" />
+                    {PLACEMENTS.map((p) => (
+                      <option key={p.value} value={p.value} className="text-ink">
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-ash" />
+                </div>
+                <div className="relative w-32 shrink-0 sm:w-45">
+                  <input
+                    name="size"
+                    aria-label="Méret (cm)"
+                    aria-describedby={placeHint}
+                    inputMode="numeric"
+                    enterKeyHint="done"
+                    placeholder="pl. 15"
+                    className={`${box} pr-12`}
+                  />
+                  <span aria-hidden="true" className="pointer-events-none absolute right-4.5 top-1/2 -translate-y-1/2 text-sm text-ash">
+                    cm
+                  </span>
+                </div>
+              </div>
+            </Row>
+
+            {/* The send block comes first in the source, so on phones it follows the fields; from lg it sits right of the axis. */}
+            <div className={`grid ${cols}`}>
+              <div className={`pt-8 lg:col-start-2 lg:row-start-1 ${fieldSide}`}>
+                <label className="flex min-h-11 w-fit cursor-pointer select-none items-center gap-3 text-[0.9375rem] text-ash">
+                  <input type="checkbox" required className="size-[1.125rem] shrink-0 cursor-pointer accent-paper" />
+                  Elmúltam 18 éves.
+                </label>
+                <button type="submit" className={`${btn.light} mt-6 w-full sm:justify-between`}>
+                  Jelentkezés elküldése <Arrow />
+                </button>
+                <p role="status" className="text-[0.9375rem] leading-snug text-ash not-empty:mt-4">
+                  {sent && "Az online jelentkezés hamarosan elérhető. Addig írj Instagramon: @pannipix."}
+                </p>
+              </div>
+
+              <div className={`mt-16 lg:col-start-1 lg:row-start-1 lg:mt-0 lg:flex lg:items-end lg:gap-6 lg:pt-10 ${labelSide}`}>
+                <figure className="relative aspect-[4/3] overflow-hidden rounded-[3px] bg-paper/10 lg:aspect-3/4 lg:w-36 lg:shrink-0 xl:w-42">
+                  <Image
+                    src="/studio/browsing.webp"
+                    alt="Egy vendég a PANNIPIX Instagram-oldalát nézegeti a telefonján"
+                    fill
+                    quality={90}
+                    sizes="(min-width: 1280px) 168px, (min-width: 1024px) 144px, 90vw"
+                    className="object-cover object-[50%_42%]"
+                  />
+                </figure>
+                <ul className="mt-9 space-y-1 border-t border-paper/15 pt-5 lg:mt-0 lg:border-0 lg:pt-0">
+                  <li>
+                    <a href="https://instagram.com/pannipix" className="inline-flex min-h-11 items-center gap-3.5 hover:text-ash">
+                      <Instagram size={20} /> @pannipix
+                    </a>
+                  </li>
+                  <li>
+                    <a href="mailto:hello@pannipix.hu" className="inline-flex min-h-11 items-center gap-3.5 hover:text-ash">
+                      <Mail size={20} /> hello@pannipix.hu
+                    </a>
+                  </li>
+                </ul>
               </div>
             </div>
-            <Field label="Méret (cm)" name="size" inputMode="numeric" enterKeyHint="done" placeholder="pl. 15" />
-          </div>
-
-          <label className="mt-8 flex min-h-11 cursor-pointer select-none items-center gap-3 text-[0.9375rem] text-ash">
-            <input type="checkbox" required className="size-[1.125rem] cursor-pointer accent-paper" />
-            Elmúltam 18 éves.
-          </label>
-
-          <div className="mt-12 flex flex-col gap-6 sm:flex-row sm:items-center">
-            <button type="submit" className={`${btn.light} sm:min-w-[17rem] sm:justify-between`}>
-              Jelentkezés elküldése <Arrow />
-            </button>
-            <p role="status" className="max-w-[20rem] text-[0.9375rem] leading-snug text-ash">
-              {sent && "Az online jelentkezés hamarosan elérhető. Addig írj Instagramon: @pannipix."}
-            </p>
-          </div>
-        </form>
-
-        <figure className="relative aspect-[4/3] overflow-hidden rounded-[3px] bg-paper/10 lg:col-start-1 lg:row-start-2">
-          <Image
-            src="/studio/browsing.webp"
-            alt="Egy vendég a PANNIPIX Instagram-oldalát nézegeti a telefonján"
-            fill
-            quality={90}
-            sizes="(min-width: 1024px) 36vw, 90vw"
-            className="object-cover object-[50%_42%]"
-          />
-        </figure>
+          </form>
+        </div>
       </div>
     </section>
   );

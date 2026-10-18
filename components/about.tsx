@@ -15,7 +15,7 @@ export function About() {
           <p className="label text-muted">Rólam</p>
           <h2
             id="about-title"
-            className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] font-normal leading-[1] tracking-[-0.02em]"
+            className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] leading-[1] tracking-[-0.02em]"
           >
             Gondolatokat tetoválok, <em>nem csak képeket.</em>
           </h2>

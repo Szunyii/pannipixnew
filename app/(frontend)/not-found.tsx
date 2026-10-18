@@ -9,7 +9,7 @@ export default function NotFound() {
         <p className="label text-muted">404</p>
         <h1
           id="not-found-title"
-          className="mt-5 font-display text-[clamp(2.4rem,5vw,4rem)] font-normal leading-none tracking-[-0.02em]"
+          className="mt-5 font-display text-[clamp(2.4rem,5vw,4rem)] leading-none tracking-[-0.02em]"
         >
           Ez az oldal nem létezik.
         </h1>

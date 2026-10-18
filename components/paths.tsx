@@ -65,7 +65,7 @@ export function Paths({ flashPrice, flashRule }: { flashPrice: string | null; fl
           <p className="label text-muted">Szolgáltatások</p>
           <h2
             id="paths-title"
-            className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] font-normal leading-[1] tracking-[-0.02em]"
+            className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] leading-[1] tracking-[-0.02em]"
           >
             Két út egy mintához.
           </h2>
@@ -90,7 +90,7 @@ export function Paths({ flashPrice, flashRule }: { flashPrice: string | null; fl
                 <p className="label text-muted">{s.label}</p>
                 <h3
                   id={`${s.id}-title`}
-                  className="mt-4 font-display text-[clamp(1.85rem,2.7vw,2.6rem)] font-normal leading-[1.08] tracking-[-0.01em]"
+                  className="mt-4 font-display text-[clamp(1.85rem,2.7vw,2.6rem)] leading-[1.08] tracking-[-0.01em]"
                 >
                   {s.title}
                 </h3>

@@ -37,7 +37,7 @@ export function Faq() {
           <p className="label text-muted">Gyakori kérdések</p>
           <h2
             id="faq-title"
-            className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] font-normal leading-[1] tracking-[-0.02em]"
+            className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] leading-[1] tracking-[-0.02em]"
           >
             Mielőtt jelentkezel.
           </h2>

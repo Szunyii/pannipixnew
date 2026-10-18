@@ -9,7 +9,7 @@ export default function Error({ retry }: { error: Error & { digest?: string }; r
     <main className="grid min-h-svh place-items-center px-5 text-center">
       <div>
         <p className="label text-muted">Hiba</p>
-        <h1 className="mt-5 font-display text-[clamp(2.4rem,5vw,4rem)] font-normal leading-none tracking-[-0.02em]">
+        <h1 className="mt-5 font-display text-[clamp(2.4rem,5vw,4rem)] leading-none tracking-[-0.02em]">
           Valami elromlott.
         </h1>
         <p className="mx-auto mt-5 max-w-[26rem] leading-[1.7] text-graphite">

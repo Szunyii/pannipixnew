@@ -111,7 +111,7 @@ export function Process() {
             <p className="label text-muted">Info</p>
             <h2
               id="process-title"
-              className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] font-normal leading-[1] tracking-[-0.02em]"
+              className="mt-5 font-display text-[clamp(2.4rem,4.8vw,4.5rem)] leading-[1] tracking-[-0.02em]"
             >
               Így készül a <em>tetoválásod.</em>
             </h2>
@@ -161,7 +161,7 @@ export function Process() {
                     <p className="font-display text-[1.0625rem] italic leading-none text-muted">
                       {String(i + 1).padStart(2, "0")}
                     </p>
-                    <h3 className="mt-3 font-display text-[clamp(1.75rem,2.6vw,2.4rem)] font-normal leading-tight">
+                    <h3 className="mt-3 font-display text-[clamp(1.75rem,2.6vw,2.4rem)] leading-tight">
                       {s.title}
                     </h3>
                     <p className={`mt-3 max-w-[25rem] leading-[1.7] text-graphite ${left ? "lg:ml-auto" : ""}`}>{s.body}</p>

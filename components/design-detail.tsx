@@ -187,7 +187,7 @@ export function DesignDetail({
             <StyleTags />
             <h1
               id="design-title"
-              className="mt-5 font-display text-[clamp(2.6rem,4.4vw,3.9rem)] font-normal leading-none tracking-[-0.02em]"
+              className="mt-5 font-display text-[clamp(2.6rem,4.4vw,3.9rem)] leading-none tracking-[-0.02em]"
             >
               {design.collection === "P’CONs" ? <Pcons suffix={` #${design.number}`} /> : name}
             </h1>

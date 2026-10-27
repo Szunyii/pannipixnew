@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { Arrow, Axis, StyleTags, Tags, btn, container } from "./ui";
+import { Arrow, StyleTags, Tags, btn, container } from "./ui";
 
 const delay = (ms: number) => ({ animationDelay: `${ms}ms` });
 
@@ -20,8 +20,8 @@ export function Hero() {
       <div
         className={`${container} relative grid gap-y-10 pb-20 pt-10 lg:max-xl:grid-cols-[minmax(0,1fr)_auto] lg:max-xl:gap-x-12 xl:min-h-[calc(100svh-4.5rem)] xl:grid-cols-[1fr_auto_1fr] xl:grid-rows-[auto_1fr_auto] xl:gap-y-0 xl:pb-12 xl:pt-12`}
       >
-        {/* From lg the copy and the art sit side by side, so the CTA stays in the first screen; from xl the three-column composition. */}
-        <Axis className="axis-draw inset-y-0 hidden xl:block" />
+        {/* From lg the copy and the portrait sit side by side, so the CTA stays in the first screen; from xl the
+            three-column composition. No axis here: it continued the drawing's bar, and on the photo it ended in her head. */}
 
         <div className="fade-up lg:max-xl:col-start-1 lg:max-xl:row-start-1 xl:col-start-1 xl:row-start-1" style={delay(1100)}>
           <Tags items={["Egyedi tetoválás", "Flash minták"]} className="text-muted" />
@@ -32,11 +32,12 @@ export function Hero() {
           id="hero-title"
           className="font-display text-[clamp(3.4rem,min(11vw,16svh),5.25rem)] lg:max-xl:col-start-1 lg:max-xl:row-start-2 lg:max-xl:text-[clamp(3.4rem,min(8.2vw,10.2svh),5.5rem)] xl:text-[clamp(3.4rem,7.3vw,7rem)] leading-[0.9] tracking-[-0.025em] xl:col-span-3 xl:col-start-1 xl:row-start-2 xl:grid xl:grid-cols-subgrid xl:grid-rows-[auto_1fr_auto] xl:py-10"
         >
-          <span className="block xl:col-start-1 xl:row-start-1 xl:-mr-16 xl:justify-self-end xl:text-right">
+          {/* The halves stop short of the portrait: an opaque photo would swallow letters that ran under it. */}
+          <span className="block xl:col-start-1 xl:row-start-1 xl:justify-self-end xl:pr-8 xl:text-right">
             <Line at={250}>Minden</Line>{" "}
             <Line at={380}>minta</Line>
           </span>{" "}
-          <span className="mt-1 block text-right xl:col-start-3 xl:row-start-3 xl:-ml-16 xl:mt-0 xl:justify-self-start xl:text-left">
+          <span className="mt-1 block text-right xl:col-start-3 xl:row-start-3 xl:mt-0 xl:justify-self-start xl:pl-8 xl:text-left">
             <Line at={520} className="italic">
               egyszer
             </Line>{" "}
@@ -44,31 +45,26 @@ export function Hero() {
           </span>
         </h1>
 
-        <figure className="relative z-10 mx-auto w-[min(76vw,23rem)] md:w-[25rem] mix-blend-multiply lg:max-xl:col-start-2 lg:max-xl:row-span-4 lg:max-xl:row-start-1 lg:max-xl:self-center xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:w-auto xl:self-center xl:px-2">
+        {/* From lg the portrait stands on the section's bottom edge (the negative margins cancel the bottom padding),
+            so the photo's cut through the trousers is the page's edge. At lg–xl the section's height comes from the
+            copy, so a fixed-width column stretches over it and the photo fills it from the bottom; from xl it's sized
+            by the viewport. Narrower than lg it sits between the copy blocks, cropped to head and torso, fading out. */}
+        <figure className="relative z-10 mx-auto w-[min(76vw,22rem)] lg:-mb-20 lg:w-88 lg:max-xl:col-start-2 lg:max-xl:row-span-4 lg:max-xl:row-start-1 lg:max-xl:self-stretch xl:col-start-2 xl:row-span-3 xl:row-start-1 xl:-mb-12 xl:w-auto xl:self-end">
           <div
-            className="ink-in relative aspect-[722/926] xl:h-[clamp(24rem,calc(100svh-16rem),42rem)]"
+            className="ink-in relative aspect-4/5 mask-[linear-gradient(to_bottom,#000_70%,transparent)] lg:aspect-auto lg:h-full lg:mask-none xl:aspect-1056/2400 xl:h-[clamp(30rem,calc(100svh-8rem),52rem)]"
             style={delay(800)}
           >
-            {/* The artwork's own bar sits 2% left of centre; nudge it onto the page axis. */}
             <Image
-              src="/flash/pcons-027-large.webp"
-              alt="P’CONs #027 flash minta: szitakötő és robotkéz egy függőleges sáv két oldalán, bolygókkal"
+              src="/studio/hero-portrait.webp"
+              alt="Mosolygó nő tetovált karokkal és nyakkal, fehér topban és ingben, karba tett kézzel"
               fill
               loading="eager"
               fetchPriority="high"
               quality={90}
-              sizes="(min-width: 1280px) 36vw, (min-width: 768px) 25rem, 76vw"
-              className="translate-x-[2.1%] object-contain"
+              sizes="(min-width: 1024px) 23rem, 76vw"
+              className="object-cover object-top lg:object-contain lg:object-bottom"
             />
           </div>
-          {/* Drawn over the art on mobile so it runs through it; on desktop the section axis shows through the multiply. */}
-          <Axis className="axis-draw -bottom-10 top-0 xl:hidden" />
-          <figcaption
-            className="label fade-up absolute left-[calc(50%+0.85rem)] top-full mt-4 whitespace-nowrap text-[0.6875rem] text-muted"
-            style={delay(1500)}
-          >
-            P’CONs #027<span className="hidden sm:inline"> — elérhető</span>
-          </figcaption>
         </figure>
 
         <div

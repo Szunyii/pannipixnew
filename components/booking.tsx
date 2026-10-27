@@ -15,7 +15,8 @@ const fieldSide = "lg:pl-10 xl:pl-14";
 // Fields inherit the section's paper colour, so the select can grey out its own text while it is empty.
 const surface =
   "w-full rounded-xs border border-paper/15 bg-paper/4 px-4.5 text-[1.0625rem] placeholder:text-ash/60 transition-[border-color,box-shadow] duration-200 hover:border-paper/30 focus:border-paper focus:shadow-[0_0_0_3px_rgb(247_247_245/0.08)] focus:outline-none";
-const box = `${surface} h-14`;
+// 48px, the height of every button on the site, the send button below included.
+const box = `${surface} h-12`;
 
 /** One ledger row: numeral, label and hint left of the axis, the field right of it; stacked on phones. */
 function Row({
@@ -43,7 +44,8 @@ function Row({
         >
           {n}
         </span>
-        <label htmlFor={htmlFor} className="label pt-1.5 text-paper">
+        {/* From lg the label sits on its field's text line (both centred 48px below the rule), the box level with the numeral. */}
+        <label htmlFor={htmlFor} className="label pt-1.5 text-paper lg:pt-3">
           {label}
         </label>
         {/* Small Bodoni needs the small optical size; at the pinned opsz 28 its hairlines fade out. */}
@@ -56,7 +58,7 @@ function Row({
           </p>
         )}
       </div>
-      <div className={`lg:py-5.5 ${fieldSide}`}>{children}</div>
+      <div className={`lg:py-6 ${fieldSide}`}>{children}</div>
     </div>
   );
 }
@@ -143,7 +145,7 @@ export function Booking() {
                 rows={6}
                 placeholder="Mi foglalkoztat?"
                 aria-describedby={ideaHint}
-                className={`${surface} block resize-none py-4 leading-[1.6]`}
+                className={`${surface} block resize-none py-3 leading-[1.6]`}
               />
             </Row>
 
@@ -202,8 +204,9 @@ export function Booking() {
                 </p>
               </div>
 
-              <div className={`mt-16 lg:col-start-1 lg:row-start-1 lg:mt-0 lg:flex lg:items-end lg:gap-6 lg:pt-10 ${labelSide}`}>
-                <figure className="relative aspect-[4/3] overflow-hidden rounded-[3px] bg-paper/10 lg:aspect-3/4 lg:w-36 lg:shrink-0 xl:w-42">
+              {/* Photo strip beside the links from sm; only phones get the full-width photo. */}
+              <div className={`mt-16 sm:flex sm:items-end sm:gap-6 lg:col-start-1 lg:row-start-1 lg:mt-0 lg:pt-10 ${labelSide}`}>
+                <figure className="relative aspect-[4/3] overflow-hidden rounded-[3px] bg-paper/10 sm:aspect-3/4 sm:w-42 sm:shrink-0 lg:w-36 xl:w-42">
                   <Image
                     src="/studio/browsing.webp"
                     alt="Egy vendég a PANNIPIX Instagram-oldalát nézegeti a telefonján"
@@ -213,7 +216,7 @@ export function Booking() {
                     className="object-cover object-[50%_42%]"
                   />
                 </figure>
-                <ul className="mt-9 space-y-1 border-t border-paper/15 pt-5 lg:mt-0 lg:border-0 lg:pt-0">
+                <ul className="mt-9 space-y-1 border-t border-paper/15 pt-5 sm:mt-0 sm:border-0 sm:pt-0">
                   <li>
                     <a href="https://instagram.com/pannipix" className="inline-flex min-h-11 items-center gap-3.5 hover:text-ash">
                       <Instagram size={20} /> @pannipix
